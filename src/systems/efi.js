@@ -1,0 +1,209 @@
+const axios = require('axios');
+const fs = require('fs');
+const https = require('https');
+const config = require('../config');
+
+// ─── Token cache ──────────────────────────────────────────────────────────────
+let _token = null;
+let _tokenExpira = 0;
+
+function baseURL() {
+  return config.efi.sandbox
+    ? 'https://pix-h.api.efipay.com.br'
+    : 'https://pix.api.efipay.com.br';
+}
+
+// ─── HTTPS Agent com certificado ─────────────────────────────────────────────
+function getAgent() {
+  if (!fs.existsSync(config.efi.certificatePath)) {
+    console.warn('⚠️  Certificado EFI não encontrado. Usando sem certificado (apenas sandbox).');
+    return undefined;
+  }
+  const cert = fs.readFileSync(config.efi.certificatePath);
+  return new https.Agent({ pfx: cert, passphrase: '' });
+}
+
+// ─── Autenticação OAuth2 ──────────────────────────────────────────────────────
+async function getToken() {
+  if (_token && Date.now() < _tokenExpira) return _token;
+
+  const credentials = Buffer.from(`${config.efi.clientId}:${config.efi.clientSecret}`).toString('base64');
+  const agent = getAgent();
+
+  try {
+    const res = await axios.post(
+      `${baseURL()}/oauth/token`,
+      { grant_type: 'client_credentials' },
+      {
+        headers: {
+          Authorization: `Basic ${credentials}`,
+          'Content-Type': 'application/json',
+        },
+        httpsAgent: agent,
+      }
+    );
+    _token = res.data.access_token;
+    _tokenExpira = Date.now() + (res.data.expires_in - 60) * 1000;
+    return _token;
+  } catch (err) {
+    const detalhe = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    throw new Error(`EFI Auth falhou: ${detalhe}`);
+  }
+}
+
+function headers(token) {
+  return {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
+}
+
+// ─── Criar cobrança PIX imediata ──────────────────────────────────────────────
+async function criarCobrancaPix({ valor, descricao, pedidoId, nomeCliente, cpf }) {
+  const token = await getToken();
+  const agent = getAgent();
+
+  const payload = {
+    calendario: { expiracao: 1800 }, // 30 minutos
+    devedor: cpf ? {
+      cpf: cpf.replace(/\D/g, ''),
+      nome: nomeCliente || 'Cliente',
+    } : undefined,
+    valor: { original: Number(valor).toFixed(2) },
+    chave: config.efi.pixKey,
+    solicitacaoPagador: descricao || 'Máximo Store',
+    infoAdicionais: [
+      { nome: 'Pedido', valor: pedidoId.slice(0, 8).toUpperCase() },
+    ],
+  };
+
+  const res = await axios.post(
+    `${baseURL()}/v2/cob`,
+    payload,
+    { headers: headers(token), httpsAgent: agent }
+  );
+
+  return {
+    txid:     res.data.txid,
+    locId:    res.data.loc?.id,        // ID numérico do location (usado para QR Code)
+    location: res.data.location,
+    status:   res.data.status,
+    valor:    res.data.valor?.original,
+    expiracao: res.data.calendario?.expiracao,
+  };
+}
+
+// ─── Gerar QR Code do PIX ─────────────────────────────────────────────────────
+// locId = res.data.loc.id (numérico) retornado pela criarCobrancaPix
+async function gerarQRCode(locId) {
+  const token = await getToken();
+  const agent = getAgent();
+
+  const res = await axios.get(
+    `${baseURL()}/v2/loc/${locId}/qrcode`,
+    { headers: headers(token), httpsAgent: agent }
+  );
+
+  return {
+    qrcode:           res.data.qrcode,
+    imagemQrcode:     res.data.imagemQrcode,
+    linkVisualizacao: res.data.linkVisualizacao,
+  };
+}
+
+// ─── Consultar status de cobrança ─────────────────────────────────────────────
+async function consultarCobranca(txid) {
+  const token = await getToken();
+  const agent = getAgent();
+
+  const res = await axios.get(
+    `${baseURL()}/v2/cob/${txid}`,
+    { headers: headers(token), httpsAgent: agent }
+  );
+
+  return {
+    txid: res.data.txid,
+    status: res.data.status, // ATIVA | CONCLUIDA | REMOVIDA_PELO_USUARIO_RECEBEDOR | REMOVIDA_PELO_PSP
+    valor: res.data.valor?.original,
+    pago: res.data.status === 'CONCLUIDA',
+    pix: res.data.pix, // array de pagamentos realizados
+  };
+}
+
+// ─── Solicitar devolução (reembolso) PIX ──────────────────────────────────────
+async function devolverPix(txid, e2eId, valor, idDevol) {
+  const token = await getToken();
+  const agent = getAgent();
+
+  const res = await axios.put(
+    `${baseURL()}/v2/pix/${e2eId}/devolucao/${idDevol}`,
+    { valor: Number(valor).toFixed(2) },
+    { headers: headers(token), httpsAgent: agent }
+  );
+
+  return res.data;
+}
+
+// ─── Criar cobrança por boleto ────────────────────────────────────────────────
+async function criarBoleto({ valor, vencimento, descricao, cliente }) {
+  const token = await getToken();
+  const agent = getAgent();
+
+  const payload = {
+    items: [{ name: descricao || 'Produto', value: Math.round(valor * 100), amount: 1 }],
+    customer: {
+      name: cliente.nome,
+      cpf: cliente.cpf?.replace(/\D/g, ''),
+      email: cliente.email,
+      phone_number: cliente.telefone?.replace(/\D/g, ''),
+    },
+    expire_at: vencimento || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    payment: {
+      banking_billet: {
+        expire_at: vencimento || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        customer: {
+          name: cliente.nome,
+          cpf: cliente.cpf?.replace(/\D/g, ''),
+          email: cliente.email,
+        },
+      },
+    },
+  };
+
+  const res = await axios.post(
+    `${baseURL()}/v1/charge`,
+    payload,
+    { headers: headers(token), httpsAgent: agent }
+  );
+
+  return {
+    id: res.data.data?.charge_id,
+    link: res.data.data?.link,
+    barcodeData: res.data.data?.barcode,
+    status: res.data.data?.status,
+  };
+}
+
+// ─── Registrar webhook PIX ────────────────────────────────────────────────────
+async function registrarWebhook(webhookUrl) {
+  const token = await getToken();
+  const agent = getAgent();
+  const chave = config.efi.pixKey;
+
+  const res = await axios.put(
+    `${baseURL()}/v2/webhook/${chave}`,
+    { webhookUrl },
+    { headers: headers(token), httpsAgent: agent }
+  );
+
+  return res.data;
+}
+
+module.exports = {
+  criarCobrancaPix,
+  gerarQRCode,
+  consultarCobranca,
+  devolverPix,
+  criarBoleto,
+  registrarWebhook,
+};
