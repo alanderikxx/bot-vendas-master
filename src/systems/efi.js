@@ -15,12 +15,18 @@ function baseURL() {
 
 // ─── HTTPS Agent com certificado ─────────────────────────────────────────────
 function getAgent() {
-  if (!fs.existsSync(config.efi.certificatePath)) {
-    console.warn('⚠️  Certificado EFI não encontrado. Usando sem certificado (apenas sandbox).');
-    return undefined;
+  // Suporte a certificado via variável de ambiente (base64) — usado no Railway/produção
+  if (process.env.EFI_CERTIFICATE_BASE64) {
+    const certBuffer = Buffer.from(process.env.EFI_CERTIFICATE_BASE64, 'base64');
+    return new https.Agent({ pfx: certBuffer, passphrase: '' });
   }
-  const cert = fs.readFileSync(config.efi.certificatePath);
-  return new https.Agent({ pfx: cert, passphrase: '' });
+  // Fallback: arquivo local
+  if (config.efi.certificatePath && fs.existsSync(config.efi.certificatePath)) {
+    const cert = fs.readFileSync(config.efi.certificatePath);
+    return new https.Agent({ pfx: cert, passphrase: '' });
+  }
+  console.warn('⚠️  Certificado EFI não encontrado. Usando sem certificado (apenas sandbox).');
+  return undefined;
 }
 
 // ─── Autenticação OAuth2 ──────────────────────────────────────────────────────
