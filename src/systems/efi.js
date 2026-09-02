@@ -17,7 +17,9 @@ function baseURL() {
 function getAgent() {
   // Suporte a certificado via variável de ambiente (base64) — usado no Railway/produção
   if (process.env.EFI_CERTIFICATE_BASE64) {
-    const certBuffer = Buffer.from(process.env.EFI_CERTIFICATE_BASE64, 'base64');
+    // Remove espaços, quebras de linha e caracteres inválidos que podem corromper o base64
+    const b64 = process.env.EFI_CERTIFICATE_BASE64.replace(/[\s\r\n]/g, '');
+    const certBuffer = Buffer.from(b64, 'base64');
     return new https.Agent({ pfx: certBuffer, passphrase: '' });
   }
   // Fallback: arquivo local
@@ -52,7 +54,13 @@ async function getToken() {
     _tokenExpira = Date.now() + (res.data.expires_in - 60) * 1000;
     return _token;
   } catch (err) {
-    const detalhe = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    const detalhe = err.response?.data
+      ? (typeof err.response.data === 'string'
+          ? err.response.data.substring(0, 200)
+          : JSON.stringify(err.response.data))
+      : err.message;
+    console.error('[EFI Auth] Status:', err.response?.status, '| URL:', baseURL());
+    console.error('[EFI Auth] Detalhe:', detalhe);
     throw new Error(`EFI Auth falhou: ${detalhe}`);
   }
 }
