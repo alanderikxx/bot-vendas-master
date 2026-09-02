@@ -1,104 +1,73 @@
 /**
- * Wrapper sobre sql.js com inicialização assíncrona uma única vez.
- * Após initDb() ser chamado, todas as operações são síncronas.
+ * Wrapper de banco de dados — usa better-sqlite3 (gravação direta em disco).
+ * No Railway, configure um Volume em /app/data para persistir entre deploys.
  *
- * Uso:
- *   const { initDb, db, ... } = require('./database');
- *   await initDb();  // só na inicialização do bot
+ * API compatível com o wrapper anterior (sql.js).
  */
 
 const fs   = require('fs');
 const path = require('path');
 
-let SQL     = null;
-let _db     = null;
-let _dbPath = null;
+let _db = null;
 
 async function initSqlJs(dbPath) {
-  if (_db) return; // já inicializado
+  if (_db) return;
 
-  _dbPath = dbPath;
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-  const initFn    = require('sql.js');
-  const wasmPath  = path.join(path.dirname(require.resolve('sql.js')), 'sql-wasm.wasm');
-  const wasmBinary = fs.readFileSync(wasmPath);
+  const BSqlite = require('better-sqlite3');
+  _db = new BSqlite(dbPath);
 
-  SQL = await initFn({ wasmBinary });
+  _db.pragma('journal_mode = WAL');
+  _db.pragma('synchronous  = NORMAL');
+  _db.pragma('foreign_keys = ON');
+  _db.pragma('cache_size   = 10000');
 
-  if (fs.existsSync(dbPath)) {
-    _db = new SQL.Database(fs.readFileSync(dbPath));
-  } else {
-    _db = new SQL.Database();
-  }
-
-  // PRAGMAs
-  for (const p of ['journal_mode=WAL', 'synchronous=NORMAL', 'foreign_keys=ON', 'cache_size=10000']) {
-    try { _db.run(`PRAGMA ${p}`); } catch {}
-  }
-
-  // Auto-save a cada 5s
-  const si = setInterval(() => _save(), 5000);
-  si.unref();
-  process.on('exit',    () => _save());
-  process.on('SIGINT',  () => { _save(); process.exit(0); });
-  process.on('SIGTERM', () => { _save(); process.exit(0); });
+  console.log(`[DB] better-sqlite3 conectado: ${dbPath}`);
 }
 
-function _save() {
-  if (!_db || !_dbPath) return;
-  try { fs.writeFileSync(_dbPath, Buffer.from(_db.export())); } catch {}
-}
-
-function _run(sql, params = []) {
-  try {
-    _db.run(sql, params);
-    return { changes: _db.getRowsModified(), lastInsertRowid: 0 };
-  } catch (e) {
-    if (e.message?.includes('already exists')) return { changes: 0 };
-    throw e;
-  }
-}
-
-// ─── API pública (igual ao better-sqlite3) ───────────────────────────────────
+// ─── API pública ──────────────────────────────────────────────────────────────
 
 const db = {
-  pragma(stmt)  { try { _run(`PRAGMA ${stmt}`); } catch {} },
+  pragma(stmt) {
+    try { _db.pragma(stmt); } catch {}
+  },
+
   exec(sql) {
-    for (const s of sql.split(';').map(x => x.trim()).filter(Boolean)) {
-      try { _run(s); } catch (e) {
-        if (!e.message?.includes('already exists')) throw e;
-      }
+    try { _db.exec(sql); } catch (e) {
+      if (!e.message?.includes('already exists')) throw e;
     }
   },
+
   prepare(sql) {
     return {
-      run(...params)  { return _run(sql, params.flat()); },
-      get(...params)  {
-        const stmt = _db.prepare(sql);
-        stmt.bind(params.flat());
-        const row = stmt.step() ? stmt.getAsObject() : undefined;
-        stmt.free();
-        return row;
+      run(...params) {
+        try {
+          const info = _db.prepare(sql).run(...params.flat());
+          return { changes: info.changes, lastInsertRowid: info.lastInsertRowid };
+        } catch (e) {
+          if (e.message?.includes('already exists')) return { changes: 0 };
+          throw e;
+        }
       },
-      all(...params)  {
-        const rows = [], stmt = _db.prepare(sql);
-        stmt.bind(params.flat());
-        while (stmt.step()) rows.push(stmt.getAsObject());
-        stmt.free();
-        return rows;
+      get(...params) {
+        try { return _db.prepare(sql).get(...params.flat()); } catch { return undefined; }
+      },
+      all(...params) {
+        try { return _db.prepare(sql).all(...params.flat()); } catch { return []; }
       },
     };
   },
+
   transaction(fn) {
     return function(...args) {
-      _run('BEGIN');
-      try   { const r = fn(...args); _run('COMMIT'); _save(); return r; }
-      catch (e) { try { _run('ROLLBACK'); } catch {} throw e; }
+      return _db.transaction(fn)(...args);
     };
   },
-  save: _save,
+
+  // better-sqlite3 persiste em disco automaticamente — save() é no-op
+  save() {},
 };
 
 module.exports = { initSqlJs, db };

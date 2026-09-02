@@ -13,6 +13,12 @@ function baseURL() {
     : 'https://pix.api.efipay.com.br';
 }
 
+function baseURLBoleto() {
+  return config.efi.sandbox
+    ? 'https://sandbox.efipay.com.br'
+    : 'https://api.efipay.com.br';
+}
+
 // ─── HTTPS Agent com certificado ─────────────────────────────────────────────
 function getAgent() {
   // Suporte a certificado via variável de ambiente (base64) — usado no Railway/produção
@@ -186,7 +192,7 @@ async function criarBoleto({ valor, vencimento, descricao, cliente }) {
   };
 
   const res = await axios.post(
-    `${baseURL()}/v1/charge`,
+    `${baseURLBoleto()}/v1/charge`,
     payload,
     { headers: headers(token), httpsAgent: agent }
   );

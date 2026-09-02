@@ -324,23 +324,34 @@ async function publicarPainel(interaction, estado, client) {
 function montarComponentes(variantes, painelId) {
   if (!variantes.length) return [];
 
-  const options = variantes.map(v => {
+  // Discord limita: label ≤ 100 chars, description ≤ 100 chars, máximo 25 opções por menu
+  const variantesVisiveis = variantes.slice(0, 25);
+
+  const options = variantesVisiveis.map(v => {
     const dig = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id);
     const qtd = dig.c;
+
+    const preco  = `R$ ${Number(v.preco).toFixed(2)}`;
+    const nome   = v.nome.slice(0, 90 - preco.length); // garante label ≤ 100
+    const label  = `${nome} • ${preco}`.slice(0, 100);
+
+    const descBase = v.descricao
+      ? v.descricao
+      : qtd === 0 ? 'Sem estoque' : `${qtd} disponível`;
+    const description = descBase.slice(0, 100);
+
     return {
-      label:       `${v.nome.slice(0, 80)}  •  R$ ${Number(v.preco).toFixed(2)}`,
-      description: v.descricao
-        ? v.descricao.slice(0, 100)
-        : qtd === 0 ? '0 disponível' : `${qtd} disponível`,
-      value:       v.id,
-      emoji:       qtd === 0 ? '❌' : '✅',
+      label,
+      description,
+      value: v.id,
+      emoji: qtd === 0 ? '❌' : '✅',
     };
   });
 
   return [new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`painel_selecionar_${painelId}`)
-      .setPlaceholder('Selecione um produto')
+      .setPlaceholder('Selecione um plano')
       .addOptions(options),
   )];
 }
