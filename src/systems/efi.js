@@ -17,17 +17,18 @@ function baseURL() {
 function getAgent() {
   // Suporte a certificado via variável de ambiente (base64) — usado no Railway/produção
   if (process.env.EFI_CERTIFICATE_BASE64) {
-    // Remove espaços, quebras de linha e caracteres inválidos que podem corromper o base64
     const b64 = process.env.EFI_CERTIFICATE_BASE64.replace(/[\s\r\n]/g, '');
+    console.log(`[EFI] Usando certificado BASE64 (${b64.length} chars)`);
     const certBuffer = Buffer.from(b64, 'base64');
     return new https.Agent({ pfx: certBuffer, passphrase: '' });
   }
   // Fallback: arquivo local
   if (config.efi.certificatePath && fs.existsSync(config.efi.certificatePath)) {
+    console.log(`[EFI] Usando certificado arquivo: ${config.efi.certificatePath}`);
     const cert = fs.readFileSync(config.efi.certificatePath);
     return new https.Agent({ pfx: cert, passphrase: '' });
   }
-  console.warn('⚠️  Certificado EFI não encontrado. Usando sem certificado (apenas sandbox).');
+  console.error('[EFI] ⚠️ NENHUM CERTIFICADO ENCONTRADO — PIX vai falhar!');
   return undefined;
 }
 
