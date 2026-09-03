@@ -402,12 +402,25 @@ async function atualizarPainelProduto(guild, painelId) {
       return { label, description: desc, value: v.id };
     });
 
-    const components = options.length ? [new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId(`painel_selecionar_${painelId}`)
-        .setPlaceholder('Selecione um plano')
-        .addOptions(options),
-    )] : [];
+    const components = [];
+    if (options.length) {
+      try {
+        const menu = new StringSelectMenuBuilder()
+          .setCustomId(`painel_selecionar_${painelId}`)
+          .setPlaceholder('Selecione um plano');
+        for (const opt of options) {
+          try {
+            menu.addOptions([opt]);
+            console.log(`  [opt OK] ${opt.label}`);
+          } catch (optErr) {
+            console.error(`  [opt FAIL] label="${opt.label}" value="${opt.value}" err=${optErr.message}`);
+          }
+        }
+        components.push(new ActionRowBuilder().addComponents(menu));
+      } catch (menuErr) {
+        console.error('[PainelProduto] Erro no menu:', menuErr.message);
+      }
+    }
 
     const cor   = parseInt(painel.cor || 'FF6B6B', 16);
     const embed = new EmbedBuilder()
