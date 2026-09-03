@@ -23,7 +23,7 @@ const CANAL_PAINEL = '1533638769901703178';
 async function buildHome(member) {
   const hoje      = Math.floor(new Date().setHours(0,0,0,0)/1000);
   const lojaAberta = Config.get('loja_aberta');
-  const manutencao = Config.get('manutencao');
+  const manutencao = Config.get('manutencao') === true;
   const nomeLoja   = Config.get('nome_loja') || 'Máximo Store';
 
   const s = db.prepare(`
@@ -323,8 +323,9 @@ async function handlePainelAdmin(interaction, client) {
   // ── Toggle manutenção ─────────────────────────────────────────────────────
   if (id === 'pa_toggle_manut') {
     if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
-    const atual = Config.get('manutencao');
-    Config.set('manutencao', atual ? '0' : '1');
+    const atual = Config.get('manutencao') === true || Config.get('manutencao') === '1';
+    // Salvar como boolean explícito para Config.get retornar corretamente
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('manutencao',?,'boolean')").run(atual ? '0' : '1');
     await interaction.reply({ content: `✅ Manutenção ${atual ? 'desativada ✅' : 'ativada 🔧'}.`, ephemeral: true });
     return atualizarPainelAdmin(interaction.guild);
   }

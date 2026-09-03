@@ -90,7 +90,7 @@ async function iniciarCompra(interaction, produtoId, cupomCodigo = null) {
   if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
 
   // Verificar manutenção
-  if (Config.get('manutencao')) return interaction.editReply({ content: '🔧 A loja está em **manutenção** no momento. Tente novamente em breve!' });
+  if (Config.get('manutencao') === true) return interaction.editReply({ content: '🔧 A loja está em **manutenção** no momento. Tente novamente em breve!' });
 
   const usuario = Usuarios.garantir(interaction.user.id, interaction.user.username);
   if (usuario.bloqueado) return interaction.editReply({ content: '🚫 Conta bloqueada. Contate o suporte.' });
@@ -323,7 +323,7 @@ async function iniciarCompraVariante(interaction, varianteId, client, cupomCodig
   if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
 
   // Verificar manutenção
-  if (Config.get('manutencao')) return interaction.editReply({ content: '🔧 A loja está em **manutenção** no momento. Tente novamente em breve!' });
+  if (Config.get('manutencao') === true) return interaction.editReply({ content: '🔧 A loja está em **manutenção** no momento. Tente novamente em breve!' });
 
   const usuario = Usuarios.garantir(interaction.user.id, interaction.user.username);
   if (usuario.bloqueado) return interaction.editReply({ content: '🚫 Conta bloqueada.' });

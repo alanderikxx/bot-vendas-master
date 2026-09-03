@@ -657,7 +657,7 @@ const Config = {
     if (r.tipo === 'number') return parseFloat(r.valor);
     return r.valor;
   },
-  set: (chave, valor) => db.prepare('INSERT OR REPLACE INTO configuracoes (chave, valor) VALUES (?,?)').run(chave, String(valor)),
+  set: (chave, valor) => db.prepare('INSERT OR REPLACE INTO configuracoes (chave, valor, tipo) VALUES (?,?,?)').run(chave, String(valor), typeof valor === 'boolean' ? 'boolean' : typeof valor === 'number' ? 'number' : 'string'),
 };
 
 // ─── Utilitários ─────────────────────────────────────────────────────────────
