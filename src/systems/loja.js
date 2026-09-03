@@ -331,26 +331,17 @@ async function iniciarCompraVariante(interaction, varianteId, client) {
   const produto = Produtos.get(variante.produto_id);
   if (!produto || !produto.ativo) return interaction.editReply({ content: '❌ Produto indisponível.' });
 
-  // Detectar se é produto de coins (entrega automática — sem estoque_variante)
-  const nomeNorm = produto.nome.toLowerCase().normalize('NFKD').replace(/[^\x20-\x7E]/g, '');
-  const isCoins  = nomeNorm.includes('coin') || produto.tipo === 'coins';
-
-  console.log(`[Compra] produto="${produto.nome}" nomeNorm="${nomeNorm}" isCoins=${isCoins}`);
-
-  // Verificar estoque — apenas se não for coins
-  if (!isCoins) {
-    const digital = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(varianteId);
-    const qtdEstoque = Number(digital?.c || 0);
-    console.log(`[Compra] variante="${variante.nome}" estoque=${qtdEstoque}`);
-    if (qtdEstoque === 0) {
-      return interaction.editReply({
-        embeds: [new EmbedBuilder()
-          .setColor(config.colors.error)
-          .setTitle('❌ Sem Estoque')
-          .setDescription(`O plano **${variante.nome}** está sem estoque no momento.\nNovos itens serão adicionados em breve.`)
-          .setTimestamp()],
-      });
-    }
+  // Verificar estoque — sem estoque, não abre ticket
+  const digital = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(varianteId);
+  const qtdEstoque = Number(digital?.c || 0);
+  if (qtdEstoque === 0) {
+    return interaction.editReply({
+      embeds: [new EmbedBuilder()
+        .setColor(config.colors.error)
+        .setTitle('❌ Sem Estoque')
+        .setDescription(`O plano **${variante.nome}** está sem estoque no momento.\nNovos itens serão adicionados em breve.`)
+        .setTimestamp()],
+    });
   }
 
   let precoFinal = Number(variante.preco);
@@ -375,17 +366,7 @@ async function iniciarCompraVariante(interaction, varianteId, client) {
     afiliadoId, comissaoAfil, metodoPag: 'pix',
   });
 
-  // Marcar nota fiscal com tipo correto
-  if (isCoins) {
-    // Extrair quantidade de coins do nome da variante (ex: "100 coins", "500 COINS")
-    const match = variante.nome.match(/(\d[\d.,]*)/);
-    const qtdCoins = match ? parseInt(match[1].replace(/[.,]/g, '')) : 0;
-    db.prepare('UPDATE pedidos SET nota_fiscal=? WHERE id=?').run(
-      JSON.stringify({ tipo: 'coins', varianteId, qtdCoins }), pedidoId,
-    );
-  } else {
-    db.prepare('UPDATE pedidos SET nota_fiscal=? WHERE id=?').run(JSON.stringify({ varianteId }), pedidoId);
-  }
+  db.prepare('UPDATE pedidos SET nota_fiscal=? WHERE id=?').run(JSON.stringify({ varianteId }), pedidoId);
 
   // Produto free
   if (precoFinal === 0) {
