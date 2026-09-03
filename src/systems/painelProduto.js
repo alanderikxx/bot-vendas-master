@@ -386,7 +386,9 @@ async function atualizarPainelProduto(guild, painelId) {
       !imagemOriginal.includes('media.discordapp.net/attachments')
       ? imagemOriginal : null;
     const imagemValida = imagemBanco || imagemCDN;
-    if (imagemValida) embed.setImage(imagemValida);
+    if (imagemValida) {
+      try { embed.setImage(imagemValida); } catch { /* URL inválida — ignora */ }
+    }
 
     const components = montarComponentes(variantes, painelId);
     console.log(`[PainelProduto] Enviando — embed title="${embed.data.title}" components=${components.length} img=${embed.data.image?.url?.slice(0,40) || 'none'}`);
