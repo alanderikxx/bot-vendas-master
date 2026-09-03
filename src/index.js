@@ -129,6 +129,19 @@ client.once('clientReady', async () => {
           await enviarEmbedCaixasCanal(guild, c.canal_id).catch(() => {});
         }
       }
+
+      // Atualizar todos os painéis de produto ativos (recarrega select menus)
+      try {
+        const { atualizarPainelProduto } = require('./systems/painelProduto');
+        const { db } = require('./database/database');
+        const paineis = db.prepare('SELECT * FROM paineis_canal WHERE ativo=1 AND mensagem_id IS NOT NULL').all();
+        console.log(`🔄 Atualizando ${paineis.length} painel(is) de produto...`);
+        for (const p of paineis) {
+          await atualizarPainelProduto(guild, p.id).catch(() => {});
+          await new Promise(r => setTimeout(r, 300)); // evitar rate limit
+        }
+        console.log(`✅ Painéis atualizados.`);
+      } catch (e) { console.error('[Init Painéis]', e.message); }
     } catch (e) { console.error('[Init]', e.message); }
   }, 3000);
 });
