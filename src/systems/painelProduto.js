@@ -354,7 +354,7 @@ function montarComponentes(variantes, painelId) {
       : isCoins ? 'Entrega automática' : (qtd === 0 ? 'Sem estoque' : `${qtd} disponível`);
     const description = descBase.slice(0, 100);
 
-    return { label, description, value: v.id, emoji };
+    return { label, description, value: v.id };
   });
 
   return [new ActionRowBuilder().addComponents(
@@ -389,13 +389,11 @@ async function atualizarPainelProduto(guild, painelId) {
     const isCoins = produto.nome?.toLowerCase().includes('coin') || produto.tipo === 'coins';
 
     const options = variantes.slice(0, 25).map(v => {
-      let emoji, descBase;
+      let descBase;
       if (isCoins) {
-        emoji    = { name: '🪙' };
         descBase = 'Entrega automática';
       } else {
         const c  = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id)?.c || 0;
-        emoji    = c === 0 ? { name: '❌' } : { name: '✅' };
         descBase = c === 0 ? 'Sem estoque' : `${c} disponível`;
       }
       const preco = `R$ ${Number(v.preco).toFixed(2)}`;
@@ -403,7 +401,8 @@ async function atualizarPainelProduto(guild, painelId) {
       const label = `${nome} • ${preco}`.slice(0, 100);
       const desc  = (v.descricao || descBase).slice(0, 100);
       console.log(`  [opt] label="${label}" (${label.length}) desc="${desc}" (${desc.length}) value="${v.id}"`);
-      return { label, description: desc, value: v.id, emoji };
+      // Emoji como string — objeto {name} causa erro de validação no discord.js v14
+      return { label, description: desc, value: v.id };
     });
 
     const components = options.length ? [new ActionRowBuilder().addComponents(
