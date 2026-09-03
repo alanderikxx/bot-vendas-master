@@ -370,22 +370,26 @@ async function atualizarPainelProduto(guild, painelId) {
     const msg = await canal.messages.fetch(painel.mensagem_id);
 
     const cor   = parseInt(painel.cor || 'FF6B6B', 16);
+    // Sanitizar descrição — shapeshift rejeita alguns Unicode especiais (ex: letras latinas pequenas)
+    const descricaoSegura = (painel.descricao || 'Selecione um plano abaixo para comprar.')
+      .replace(/[\u1D00-\u1D7F\u1D80-\u1DBF\u2C60-\u2C7F\uA720-\uA7FF]/g, c => c.normalize('NFKD')[0] || '')
+      .slice(0, 4096) || 'Selecione um plano abaixo para comprar.';
+
     let embed;
     try {
       embed = new EmbedBuilder()
         .setColor(cor)
         .setTitle(`🛍️ ${painel.titulo || produto.nome}`)
-        .setDescription(painel.descricao || 'Selecione um plano abaixo para comprar.')
+        .setDescription(descricaoSegura)
         .setTimestamp()
         .setFooter({ text: 'Máximo Store • Selecione um plano para comprar' });
-    } catch (embedErr) {
-      console.error(`[PainelProduto] Erro no embed — titulo="${painel.titulo}" desc="${(painel.descricao||'').slice(0,50)}":`, embedErr.message);
-      // Fallback com embed mínimo
+    } catch {
       embed = new EmbedBuilder()
         .setColor(cor)
-        .setTitle('🛍️ Produto')
+        .setTitle(`🛍️ ${painel.titulo || produto.nome}`)
         .setDescription('Selecione um plano abaixo para comprar.')
-        .setTimestamp();
+        .setTimestamp()
+        .setFooter({ text: 'Máximo Store • Selecione um plano para comprar' });
     }
 
     // Imagem: URL salva no banco (sempre válida) ou URL externa do embed original
