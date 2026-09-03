@@ -405,14 +405,20 @@ async function atualizarPainelProduto(guild, painelId) {
       .setFooter({ text: 'Máximo Store • Selecione um plano para comprar' });
 
     if (painel.descricao) embed.setDescription(painel.descricao);
+    else embed.setDescription('Selecione um plano abaixo para comprar.');
     if (imagemValida) embed.setImage(imagemValida);
 
     // SEM campos de planos no embed — apenas select menu é atualizado
     const components = montarComponentes(variantes, painelId);
     console.log(`[PainelProduto] Painel ${painelId.slice(0,8)} — ${variantes.length} variante(s), ${components.length} componente(s)`);
+    if (components.length) {
+      const opts = components[0]?.components[0]?.options;
+      if (opts) opts.forEach(o => console.log(`  option label="${o.label}" desc="${o.description}" val="${o.value}"`));
+    }
     await msg.edit({ embeds: [embed], components });
   } catch (err) {
     console.error('[PainelProduto] Erro ao atualizar:', err.message);
+    if (err.rawError) console.error('[PainelProduto] Raw:', JSON.stringify(err.rawError));
   }
 }
 
