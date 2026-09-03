@@ -335,12 +335,24 @@ function montarComponentes(variantes, painelId) {
   const isCoins   = produto?.nome?.toLowerCase().includes('coin') || produto?.tipo === 'coins';
 
   const options = variantes.slice(0, 25).map(v => {
-    const temEstoque = isCoins || (db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id)?.c || 0) > 0;
+    const qtd       = isCoins ? null : (db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id)?.c || 0);
+    const temEstoque = isCoins || qtd > 0;
     const preco = `R$ ${Number(v.preco).toFixed(2)}`;
     const nome  = sanitizar(v.nome, 90 - preco.length) || 'Plano';
     const label = `${temEstoque ? '' : '❌ '}${nome} • ${preco}`.slice(0, 100);
-    const desc  = sanitizar(v.descricao || (isCoins ? 'Entrega automatica' : (temEstoque ? 'Disponivel' : 'Sem estoque')), 100);
-    return { label, description: desc, value: v.id };
+
+    // Description: estoque no lado direito (field description aparece abaixo do label no Discord)
+    let desc;
+    if (isCoins) {
+      desc = '🪙 Entrega automática';
+    } else if (qtd === 0) {
+      desc = '❌ Sem estoque';
+    } else {
+      const descCustom = v.descricao ? sanitizar(v.descricao, 60) : null;
+      desc = descCustom ? `${descCustom} • 📦 ${qtd} un.` : `📦 ${qtd} unidade(s) disponível`;
+    }
+
+    return { label, description: desc.slice(0, 100), value: v.id };
   });
 
   // JSON raw para evitar validação shapeshift com caracteres Unicode especiais
