@@ -40,51 +40,40 @@ async function buildHome(member) {
       (SELECT COUNT(*) FROM paineis_canal WHERE ativo=1)                                           AS paineis
   `).get(hoje, hoje);
 
-  const status = manutencao ? '🔧 Manutenção' : lojaAberta ? '🟢 Aberta' : '🔴 Fechada';
-  const ehAdmin = member ? isAdmin(member) : false;
+  const statusEmoji = manutencao ? '🔧' : '🟢';
+  const statusTxt   = manutencao ? 'Manutenção' : 'Online';
+  const ehAdmin     = member ? isAdmin(member) : true; // painel fixo sempre mostra tudo
 
   const embed = new EmbedBuilder()
-    .setColor(manutencao ? config.colors.warning : lojaAberta ? config.colors.success : config.colors.error)
-    .setTitle(`🎛️ Painel — ${nomeLoja}`)
-    .setDescription(`**Status:** ${status} • \`${moment().tz(config.timezone).format('DD/MM HH:mm')}\``)
+    .setColor(manutencao ? config.colors.warning : config.colors.success)
+    .setTitle(`🎛️ ${nomeLoja} — Painel de Controle`)
     .addFields(
-      { name: '📅 Hoje',     value: `**${s.vendas_hoje}** vendas\n**R$ ${Number(s.receita_hoje).toFixed(2)}**`,   inline: true },
-      { name: '📊 Total',    value: `**${s.total_vendas}** vendas\n**R$ ${Number(s.receita_total).toFixed(2)}**`, inline: true },
-      { name: '⚡ Urgente',  value: `⏳ ${s.pendentes} pend.\n🎫 ${s.tickets} tickets\n↩️ ${s.reembolsos} reimb.`, inline: true },
-      { name: '📦 Loja',     value: `${s.produtos} produtos\n${s.paineis} painéis`,                               inline: true },
-      { name: '👥 Usuários', value: `${s.usuarios} cadastrados`,                                                  inline: true },
+      { name: '📊 Status',   value: `${statusEmoji} **${statusTxt}**\n\`${moment().tz(config.timezone).format('DD/MM HH:mm')}\``, inline: true },
+      { name: '📅 Hoje',     value: `🛒 **${s.vendas_hoje}** vendas\n💵 **R$ ${Number(s.receita_hoje).toFixed(2)}**`,             inline: true },
+      { name: '📈 Total',    value: `🛒 **${s.total_vendas}** vendas\n💵 **R$ ${Number(s.receita_total).toFixed(2)}**`,            inline: true },
+      { name: '⚡ Urgente',  value: `⏳ ${s.pendentes} pendentes\n🎫 ${s.tickets} tickets\n↩️ ${s.reembolsos} reemb.`,            inline: true },
+      { name: '📦 Produtos', value: `${s.produtos} produtos\n${s.paineis} painéis`,                                               inline: true },
+      { name: '👥 Usuários', value: `${s.usuarios} cadastrados`,                                                                  inline: true },
     )
-    .setFooter({ text: 'Máximo Store • Painel' })
+    .setFooter({ text: `Máximo Store • Painel Admin` })
     .setTimestamp();
 
   const rows = [];
 
-  // Row 1 — Controles rápidos (só Admin+)
-  if (ehAdmin) {
-    rows.push(new ActionRowBuilder().addComponents(
-      btn('pa_toggle_manut', manutencao ? '✅ Sair Manutenção' : '🔧 Manutenção', manutencao ? ButtonStyle.Success : ButtonStyle.Danger),
-      btn('pa_atualizar',    '🔄 Atualizar', ButtonStyle.Primary),
-      btn('pa_relatorio',    '📊 Relatório', ButtonStyle.Secondary),
-    ));
-  } else {
-    rows.push(new ActionRowBuilder().addComponents(
-      btn('pa_atualizar', '🔄 Atualizar', ButtonStyle.Primary),
-      btn('pa_relatorio', '📊 Relatório', ButtonStyle.Secondary),
-    ));
-  }
+  // Row 1 — Controles (sempre visível — permissão verificada no clique)
+  rows.push(new ActionRowBuilder().addComponents(
+    btn('pa_toggle_manut', manutencao ? '✅ Sair Manutenção' : '🔧 Manutenção', manutencao ? ButtonStyle.Success : ButtonStyle.Danger),
+    btn('pa_atualizar',    '🔄 Atualizar', ButtonStyle.Primary),
+    btn('pa_relatorio',    '📊 Relatório', ButtonStyle.Secondary),
+  ));
 
-  // Row 2 — Navegação (Loja+ vê menu Loja; Admin+ vê tudo)
-  const navRow = new ActionRowBuilder().addComponents(
-    btn('pa_menu_loja', '🛒 Loja', ButtonStyle.Success),
-  );
-  if (ehAdmin) {
-    navRow.addComponents(
-      btn('pa_menu_operacoes', '⚙️ Operações',   ButtonStyle.Primary),
-      btn('pa_menu_usuarios',  '👥 Usuários',     ButtonStyle.Secondary),
-      btn('pa_menu_caixa',     '🎁 Caixas',       ButtonStyle.Secondary),
-    );
-  }
-  rows.push(navRow);
+  // Row 2 — Navegação
+  rows.push(new ActionRowBuilder().addComponents(
+    btn('pa_menu_loja',      '🛒 Loja',       ButtonStyle.Success),
+    btn('pa_menu_operacoes', '⚙️ Operações',  ButtonStyle.Primary),
+    btn('pa_menu_usuarios',  '👥 Usuários',   ButtonStyle.Secondary),
+    btn('pa_menu_caixa',     '🎁 Caixas',     ButtonStyle.Secondary),
+  ));
 
   return { embed, components: rows };
 }
