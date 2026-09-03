@@ -137,9 +137,14 @@ client.once('clientReady', async () => {
         const paineis = db.prepare('SELECT * FROM paineis_canal WHERE ativo=1 AND mensagem_id IS NOT NULL').all();
         console.log(`🔄 Atualizando ${paineis.length} painel(is) de produto...`);
         for (const p of paineis) {
-          await atualizarPainelProduto(guild, p.id).catch(() => {});
-          await new Promise(r => setTimeout(r, 300)); // evitar rate limit
+          const vars = db.prepare('SELECT COUNT(*) as c FROM variantes_produto WHERE produto_id=? AND ativo=1').get(p.produto_id);
+          console.log(`  Painel ${p.id.slice(0,8)} | msg:${p.mensagem_id?.slice(0,8)} | canal:${p.canal_id} | variantes:${vars?.c || 0}`);
+          await atualizarPainelProduto(guild, p.id).catch(e => console.error(`  [ERRO] ${p.id.slice(0,8)}:`, e.message));
+          await new Promise(r => setTimeout(r, 300));
         }
+        // Log painéis sem mensagem_id
+        const semMsg = db.prepare('SELECT * FROM paineis_canal WHERE ativo=1 AND (mensagem_id IS NULL OR mensagem_id = \'\')').all();
+        if (semMsg.length) console.log(`⚠️ Painéis sem mensagem_id: ${semMsg.map(p => p.id.slice(0,8)).join(', ')}`);
         console.log(`✅ Painéis atualizados.`);
       } catch (e) { console.error('[Init Painéis]', e.message); }
     } catch (e) { console.error('[Init]', e.message); }
