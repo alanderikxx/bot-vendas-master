@@ -373,7 +373,7 @@ async function atualizarPainelProduto(guild, painelId) {
     const painel = db.prepare('SELECT * FROM paineis_canal WHERE id=?').get(painelId);
     if (!painel?.mensagem_id) return;
 
-    const produto  = db.prepare('SELECT * FROM produtos WHERE id=?').get(painel.produto_id);
+    const produto = db.prepare('SELECT * FROM produtos WHERE id=?').get(painel.produto_id);
     if (!produto) return;
 
     const variantes = db.prepare('SELECT * FROM variantes_produto WHERE produto_id=? AND ativo=1 ORDER BY ordem ASC').all(painel.produto_id);
@@ -388,34 +388,60 @@ async function atualizarPainelProduto(guild, painelId) {
     // ── Imagem: usar URL salva no banco ou URL externa do embed original ──
     const embedOriginal  = msg.embeds[0];
     const imagemOriginal = embedOriginal?.image?.url || embedOriginal?.thumbnail?.url || null;
-
-    // Prioridade: 1) URL salva no banco (sempre válida), 2) URL externa (não CDN attachment)
-    const imagemBanco = painel.imagem_url || null;
-    const imagemCDN   = imagemOriginal &&
+    const imagemBanco    = painel.imagem_url || null;
+    const imagemCDN      = imagemOriginal &&
       !imagemOriginal.includes('cdn.discordapp.com/attachments') &&
       !imagemOriginal.includes('media.discordapp.net/attachments')
       ? imagemOriginal : null;
-    const imagemValida = imagemBanco || imagemCDN;
+    const imagemValida   = imagemBanco || imagemCDN;
 
     const cor   = parseInt(painel.cor || 'FF6B6B', 16);
     const embed = new EmbedBuilder()
       .setColor(cor)
       .setTitle(`🛍️ ${painel.titulo || produto.nome}`)
+      .setDescription(painel.descricao || 'Selecione um plano abaixo para comprar.')
       .setTimestamp()
       .setFooter({ text: 'Máximo Store • Selecione um plano para comprar' });
 
-    if (painel.descricao) embed.setDescription(painel.descricao);
-    else embed.setDescription('Selecione um plano abaixo para comprar.');
     if (imagemValida) embed.setImage(imagemValida);
 
-    // SEM campos de planos no embed — apenas select menu é atualizado
-    const components = montarComponentes(variantes, painelId);
-    console.log(`[PainelProduto] Painel ${painelId.slice(0,8)} — ${variantes.length} variante(s), ${components.length} componente(s)`);
-    if (components.length) {
-      const opts = components[0]?.components[0]?.options;
-      if (opts) opts.forEach(o => console.log(`  option label="${o.label}" desc="${o.description}" val="${o.value}"`));
+    // ── Montar options manualmente para debugar ───────────────────────────
+    let components = [];
+    try {
+      const isCoins = produto.nome?.toLowerCase().includes('coin') || produto.tipo === 'coins';
+      const options = variantes.slice(0, 25).map(v => {
+        let emoji, descBase;
+        if (isCoins) {
+          emoji    = { name: '🪙' };
+          descBase = 'Entrega automática';
+        } else {
+          const c  = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id)?.c || 0;
+          emoji    = c === 0 ? { name: '❌' } : { name: '✅' };
+          descBase = c === 0 ? 'Sem estoque' : `${c} disponível`;
+        }
+        const preco = `R$ ${Number(v.preco).toFixed(2)}`;
+        const nome  = (v.nome || 'Plano').slice(0, 90 - preco.length);
+        const label = `${nome} • ${preco}`.slice(0, 100);
+        const desc  = (v.descricao || descBase).slice(0, 100);
+        console.log(`  [opt] label="${label}" desc="${desc}" value="${v.id}"`);
+        return { label, description: desc, value: v.id, emoji };
+      });
+
+      if (options.length) {
+        components = [new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`painel_selecionar_${painelId}`)
+            .setPlaceholder('Selecione um plano')
+            .addOptions(options),
+        )];
+      }
+    } catch (compErr) {
+      console.error('[PainelProduto] Erro ao montar components:', compErr.message);
     }
+
+    console.log(`[PainelProduto] Enviando edit — ${components.length} componente(s)`);
     await msg.edit({ embeds: [embed], components });
+    console.log(`[PainelProduto] Edit OK`);
   } catch (err) {
     console.error('[PainelProduto] Erro ao atualizar:', err.message);
     if (err.rawError) console.error('[PainelProduto] Raw:', JSON.stringify(err.rawError));
