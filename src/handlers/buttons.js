@@ -72,6 +72,11 @@ module.exports = async (interaction, client) => {
     return handlePainelAdmin(interaction, client);
   }
 
+  // ── Submenu criar/editar carrinho (cc_*) ─────────────────────────────────
+  if (id.startsWith('cc_')) {
+    return handlePainelAdmin(interaction, client);
+  }
+
   // ── Resgate de códigos de coins ───────────────────────────────────────────
   if (id === 'resgatar_codigo_coins') {
     const modal = new (require('discord.js').ModalBuilder)()

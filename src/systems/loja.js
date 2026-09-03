@@ -5,7 +5,7 @@ const {
 } = require('discord.js');
 const QRCode  = require('qrcode');
 const config  = require('../config');
-const { Usuarios, Produtos, Pedidos, Cupons, db } = require('../database/database');
+const { Usuarios, Produtos, Pedidos, Cupons, Config, db } = require('../database/database');
 const { log }        = require('../utils/logger');
 const { Embeds }     = require('../utils/embeds');
 const efi            = require('./efi');
@@ -88,6 +88,9 @@ async function mostrarProduto(interaction, produtoId) {
 // ─── Iniciar compra — abre ticket com opções, PIX só gerado ao clicar ─────────
 async function iniciarCompra(interaction, produtoId, cupomCodigo = null) {
   if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
+
+  // Verificar manutenção
+  if (Config.get('manutencao')) return interaction.editReply({ content: '🔧 A loja está em **manutenção** no momento. Tente novamente em breve!' });
 
   const usuario = Usuarios.garantir(interaction.user.id, interaction.user.username);
   if (usuario.bloqueado) return interaction.editReply({ content: '🚫 Conta bloqueada. Contate o suporte.' });
@@ -318,6 +321,9 @@ async function pagarComCoins(interaction, pedidoId, client) {
 // ─── Compra via variante (painel de produto) ──────────────────────────────────
 async function iniciarCompraVariante(interaction, varianteId, client, cupomCodigo = null) {
   if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
+
+  // Verificar manutenção
+  if (Config.get('manutencao')) return interaction.editReply({ content: '🔧 A loja está em **manutenção** no momento. Tente novamente em breve!' });
 
   const usuario = Usuarios.garantir(interaction.user.id, interaction.user.username);
   if (usuario.bloqueado) return interaction.editReply({ content: '🚫 Conta bloqueada.' });

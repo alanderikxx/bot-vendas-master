@@ -19,6 +19,12 @@ module.exports = async (interaction, client) => {
     });
   }
 
+  // ── Selecionar carrinho para editar ──────────────────────────────────────
+  if (id === 'pa_select_editar_carrinho') {
+    const { handlePainelAdmin } = require('../systems/painelAdmin');
+    return handlePainelAdmin(interaction, client);
+  }
+
   // ── Painel builder (remover plano) ────────────────────────────────────────
   if (id === 'pb_rem_plano_select') {
     const { handlePainelBuilder } = require('../systems/painelProduto');

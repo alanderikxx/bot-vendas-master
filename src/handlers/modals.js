@@ -14,6 +14,18 @@ module.exports = async (interaction, client) => {
     return handlePainelAdminModals(interaction, client);
   }
 
+  // ── Modais do submenu criar/editar carrinho (ccm_*) ───────────────────────
+  if (id.startsWith('ccm_')) {
+    const cc = require('../systems/criarCarrinhoSub');
+    switch (id) {
+      case 'ccm_canal':     return cc.processarCanal(interaction);
+      case 'ccm_titulo':    return cc.processarTitulo(interaction);
+      case 'ccm_descricao': return cc.processarDescricao(interaction);
+      case 'ccm_imagem':    return cc.processarImagem(interaction);
+    }
+    return;
+  }
+
   // ── Modal resgate código de coins ─────────────────────────────────────────
   if (id === 'modal_resgatar_codigo') {
     const codigo = interaction.fields.getTextInputValue('codigo');

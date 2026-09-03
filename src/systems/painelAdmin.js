@@ -5,7 +5,7 @@
 
 const {
   EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
-  ModalBuilder, TextInputBuilder, TextInputStyle,
+  ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder,
 } = require('discord.js');
 const { db, Config, Produtos, Usuarios } = require('../database/database');
 const { isAdmin, isStaff, isLoja, isOwner } = require('../utils/permissions');
@@ -62,8 +62,7 @@ async function buildHome(member) {
   // Row 1 — Controles rápidos (só Admin+)
   if (ehAdmin) {
     rows.push(new ActionRowBuilder().addComponents(
-      btn('pa_toggle_loja',  lojaAberta ? '🔴 Fechar Loja' : '🟢 Abrir Loja', lojaAberta ? ButtonStyle.Danger : ButtonStyle.Success),
-      btn('pa_toggle_manut', manutencao ? '✅ Sair Manutenção' : '🔧 Manutenção', manutencao ? ButtonStyle.Success : ButtonStyle.Secondary),
+      btn('pa_toggle_manut', manutencao ? '✅ Sair Manutenção' : '🔧 Manutenção', manutencao ? ButtonStyle.Success : ButtonStyle.Danger),
       btn('pa_atualizar',    '🔄 Atualizar', ButtonStyle.Primary),
       btn('pa_relatorio',    '📊 Relatório', ButtonStyle.Secondary),
     ));
@@ -109,20 +108,18 @@ function buildLojaMenu() {
   const row1 = new ActionRowBuilder().addComponents(
     btn('pa_criar_carrinho',   '➕ Criar',         ButtonStyle.Success),
     btn('pa_listar_carrinhos', '📋 Ver',           ButtonStyle.Primary),
+    btn('pa_editar_carrinho',  '✏️ Editar',        ButtonStyle.Primary),
     btn('pa_add_plano',        '＋ Plano',          ButtonStyle.Secondary),
     btn('pa_add_estoque',      '📥 Estoque',       ButtonStyle.Secondary),
-    btn('pa_remover_plano',    '➖ Rem Plano',     ButtonStyle.Danger),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
+    btn('pa_remover_plano',    '➖ Rem Plano',     ButtonStyle.Danger),
     btn('pa_criar_cupom',      '🎟️ Criar Cupom',   ButtonStyle.Success),
     btn('pa_listar_cupons',    '🎟️ Ver Cupons',    ButtonStyle.Secondary),
     btn('pa_estoque_baixo',    '📉 Est. Baixo',    ButtonStyle.Secondary),
-    btn('pa_top_produtos',     '🏆 Top',           ButtonStyle.Secondary),
     btn('pa_deletar_carrinho', '🗑️ Deletar',       ButtonStyle.Danger),
-  );
-
-  const row3 = new ActionRowBuilder().addComponents(
+  );  const row3 = new ActionRowBuilder().addComponents(
     btn('pa_home', '🔙 Voltar', ButtonStyle.Secondary),
   );
 
@@ -364,15 +361,62 @@ async function handlePainelAdmin(interaction, client) {
 
   if (id === 'pa_criar_carrinho') {
     if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja.', ephemeral: true });
-    const modal = new ModalBuilder().setCustomId('pam_criar_carrinho').setTitle('🛒 Criar Carrinho');
-    modal.addComponents(
-      mRow(new TextInputBuilder().setCustomId('canal_id').setLabel('ID do Canal de destino').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 1544177169440317440')),
-      mRow(new TextInputBuilder().setCustomId('titulo').setLabel('Nome do Produto').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: Netflix Premium')),
-      mRow(new TextInputBuilder().setCustomId('descricao').setLabel('Descrição (opcional)').setStyle(TextInputStyle.Paragraph).setRequired(false)),
-      mRow(new TextInputBuilder().setCustomId('imagem').setLabel('URL da imagem (opcional)').setStyle(TextInputStyle.Short).setRequired(false)),
-      mRow(new TextInputBuilder().setCustomId('cor').setLabel('Cor hex (opcional, ex: FF6B6B)').setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(6).setPlaceholder('FF6B6B')),
+    const cc = require('./criarCarrinhoSub');
+    await interaction.deferReply({ ephemeral: true });
+    return cc.abrirSubmenu(interaction, 'criar');
+  }
+
+  if (id === 'pa_editar_carrinho') {
+    if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    // Listar carrinhos para escolher qual editar
+    const paineis = db.prepare('SELECT p.*, pr.nome AS pnome FROM paineis_canal p JOIN produtos pr ON p.produto_id=pr.id WHERE p.ativo=1 ORDER BY p.criado_em DESC LIMIT 25').all();
+    if (!paineis.length) return interaction.editReply({ content: '📋 Nenhum carrinho criado ainda.' });
+    const options = paineis.map(p => ({
+      label: p.pnome.slice(0, 100),
+      description: `Canal: ${p.canal_id} | ID: ${p.produto_id.slice(0,8)}`,
+      value: p.id,
+    }));
+    const row = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('pa_select_editar_carrinho')
+        .setPlaceholder('Selecione o carrinho para editar')
+        .addOptions(options),
     );
-    return interaction.showModal(modal);
+    return interaction.editReply({ content: '✏️ Escolha o carrinho que deseja editar:', components: [row] });
+  }
+
+  if (id === 'pa_select_editar_carrinho') {
+    if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja.', ephemeral: true });
+    const painelId = interaction.values[0];
+    const painel   = db.prepare('SELECT * FROM paineis_canal WHERE id=?').get(painelId);
+    const produto  = painel ? db.prepare('SELECT * FROM produtos WHERE id=?').get(painel.produto_id) : null;
+    if (!painel || !produto) return interaction.reply({ content: '❌ Carrinho não encontrado.', ephemeral: true });
+    await interaction.deferUpdate().catch(() => {});
+    const cc = require('./criarCarrinhoSub');
+    return cc.abrirSubmenu(interaction, 'editar', {
+      canalId:   painel.canal_id,
+      titulo:    painel.titulo || produto.nome,
+      descricao: painel.descricao,
+      imagemUrl: painel.imagem_url,
+      cor:       painel.cor || 'FF6B6B',
+      painelId:  painel.id,
+      produtoId: produto.id,
+    });
+  }
+
+  // Submenu criar/editar carrinho (cc_*)
+  if (id.startsWith('cc_')) {
+    const cc = require('./criarCarrinhoSub');
+    switch (id) {
+      case 'cc_canal':    return cc.modalCanal(interaction);
+      case 'cc_titulo':   return cc.modalTitulo(interaction);
+      case 'cc_descricao': return cc.modalDescricao(interaction);
+      case 'cc_imagem':   return cc.modalImagem(interaction);
+      case 'cc_publicar': return cc.publicar(interaction);
+      case 'cc_salvar':   return cc.salvar(interaction);
+      case 'cc_cancelar': return cc.cancelar(interaction);
+    }
   }
 
   if (id === 'pa_add_plano') {
