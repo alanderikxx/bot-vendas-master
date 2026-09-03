@@ -293,8 +293,10 @@ async function publicarPainel(interaction, estado, client) {
     .setTimestamp()
     .setFooter({ text: 'Máximo Store • Selecione um plano para comprar' });
 
-  if (estado.descricao) embed.setDescription(estado.descricao);
-  else embed.setDescription('Selecione um plano abaixo para comprar.');
+  if (estado.descricao) {
+    const descFmt = estado.descricao.split('\n').map(l => l.startsWith('>') ? l : `> ${l}`).join('\n');
+    embed.setDescription(descFmt);
+  } else embed.setDescription('> Selecione um plano abaixo para comprar.');
   if (estado.imagemUrl) embed.setImage(estado.imagemUrl);
 
   const components = montarComponentes(variantes, painelId);
@@ -382,10 +384,18 @@ async function atualizarPainelProduto(guild, painelId) {
     const imagemValida = imagemBanco || imagemCDN;
 
     // Montar embed como JSON puro — bypassa validação shapeshift (aceita qualquer Unicode)
+    // Formatar descrição com blockquote (>) em cada linha
+    const descricaoBruta = painel.descricao || 'Selecione um plano abaixo para comprar.';
+    const descricaoFormatada = descricaoBruta
+      .split('\n')
+      .map(linha => linha.startsWith('>') ? linha : `> ${linha}`)
+      .join('\n')
+      .slice(0, 4096);
+
     const embedData = {
       color:       isNaN(cor) ? 0xFF6B6B : cor,
       title:       `🛍️ ${(painel.titulo || produto.nome || 'Produto').slice(0, 256)}`,
-      description: (painel.descricao || 'Selecione um plano abaixo para comprar.').slice(0, 4096),
+      description: descricaoFormatada,
       timestamp:   new Date().toISOString(),
       footer:      { text: 'Máximo Store • Selecione um plano para comprar' },
     };

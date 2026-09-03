@@ -278,10 +278,12 @@ async function publicar(interaction) {
     .run(painelId, s.canalId, produtoId, s.titulo, s.descricao, s.cor, s.imagemUrl || null, interaction.user.id);
 
   // Enviar mensagem no canal
+  const descBruta = s.descricao || 'Selecione um plano abaixo para comprar.';
+  const descFmt   = descBruta.split('\n').map(l => l.startsWith('>') ? l : `> ${l}`).join('\n');
   const embedData = {
     color:       parseInt(s.cor, 16) || 0xFF6B6B,
     title:       `🛍️ ${s.titulo}`,
-    description: s.descricao || 'Selecione um plano abaixo para comprar.',
+    description: descFmt,
     timestamp:   new Date().toISOString(),
     footer:      { text: 'Máximo Store • Selecione um plano para comprar' },
   };

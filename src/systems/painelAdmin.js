@@ -84,12 +84,12 @@ function buildLojaMenu() {
     .setColor(config.colors.loja)
     .setTitle('🛒 Painel — Loja')
     .setDescription([
-      '**Fluxo para criar um carrinho:**',
-      '`1.` **➕ Criar** — define nome, canal e imagem',
-      '`2.` **＋ Plano** — adiciona planos com preço',
-      '`3.` **📥 Estoque** — cola os itens (1 por linha)',
-      '',
-      '**Cupons** podem ser criados e listados abaixo.',
+      '> **Fluxo para criar um carrinho:**',
+      '> `1.` **➕ Criar** — define nome, canal e imagem',
+      '> `2.` **＋ Plano** — adiciona planos com preço',
+      '> `3.` **📥 Estoque** — cola os itens (1 por linha)',
+      '> ',
+      '> **Cupons** podem ser criados e listados abaixo.',
     ].join('\n'))
     .setFooter({ text: 'Máximo Store • Loja' })
     .setTimestamp();
@@ -127,7 +127,7 @@ function buildOperacoesMenu() {
   const embed = new EmbedBuilder()
     .setColor(s.reimb > 0 || s.tick > 0 ? config.colors.warning : config.colors.success)
     .setTitle('⚙️ Painel — Operações')
-    .setDescription('Gerencie tickets, reembolsos, pedidos e campanhas.')
+    .setDescription('> Gerencie tickets, reembolsos, pedidos e campanhas.')
     .addFields(
       { name: '↩️ Reembolsos', value: `${s.reimb} pendente(s)`, inline: true },
       { name: '🎫 Tickets',    value: `${s.tick} aberto(s)`,    inline: true },
@@ -162,7 +162,7 @@ function buildUsuariosMenu() {
   const embed = new EmbedBuilder()
     .setColor(config.colors.info)
     .setTitle('👥 Painel — Usuários')
-    .setDescription('Busque, gerencie coins e visualize rankings.')
+    .setDescription('> Busque, gerencie coins e visualize rankings.')
     .setFooter({ text: 'Máximo Store • Usuários' })
     .setTimestamp();
 
