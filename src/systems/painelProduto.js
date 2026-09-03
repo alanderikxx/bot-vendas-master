@@ -294,13 +294,11 @@ async function publicarPainel(interaction, estado, client) {
     .setFooter({ text: 'Máximo Store • Selecione um plano para comprar' });
 
   if (estado.descricao) embed.setDescription(estado.descricao);
-
-  // SEM campos de planos — apenas título, descrição e imagem
-  // Os planos aparecem apenas no select menu abaixo
+  else embed.setDescription('Selecione um plano abaixo para comprar.');
+  if (estado.imagemUrl) embed.setImage(estado.imagemUrl);
 
   const components = montarComponentes(variantes, painelId);
   const payload = { embeds: [embed], components };
-  if (estado.imagemUrl) embed.setImage(estado.imagemUrl);
 
   const msg = await canal.send(payload);
 
@@ -321,110 +319,69 @@ async function publicarPainel(interaction, estado, client) {
 }
 
 // ─── Montar componentes do painel publicado ───────────────────────────────────
+// ─── Helper: normalizar texto para Discord ────────────────────────────────────
+function sanitizar(str, max = 100) {
+  return (str || '').normalize('NFKD').replace(/[^\x20-\x7E\u00C0-\u024F]/g, '').trim().slice(0, max) || '?';
+}
+
+// ─── Montar componentes do painel publicado ───────────────────────────────────
 function montarComponentes(variantes, painelId) {
   if (!variantes.length) return [];
 
-  // Discord limita: label ≤ 100 chars, description ≤ 100 chars, máximo 25 opções por menu
-  const variantesVisiveis = variantes.slice(0, 25);
-
-  // Detectar se é coins via nome do produto (busca direta pelo produto_id das variantes)
   const produtoId = variantes[0]?.produto_id;
-  const produto = produtoId
-    ? db.prepare('SELECT nome, tipo FROM produtos WHERE id=?').get(produtoId)
-    : db.prepare('SELECT nome, tipo FROM produtos WHERE id=(SELECT produto_id FROM paineis_canal WHERE id=?)').get(painelId);
-  const isCoins = produto?.nome?.toLowerCase().includes('coin') || produto?.tipo === 'coins';
+  const produto   = produtoId ? db.prepare('SELECT nome, tipo FROM produtos WHERE id=?').get(produtoId) : null;
+  const isCoins   = produto?.nome?.toLowerCase().includes('coin') || produto?.tipo === 'coins';
 
-  const options = variantesVisiveis.map(v => {
-    let descBase;
-    if (isCoins) {
-      descBase = 'Entrega automatica';
-    } else {
-      const dig = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id);
-      const qtd = dig?.c || 0;
-      descBase  = qtd === 0 ? 'Sem estoque' : `${qtd} disponivel`;
+  // ≤5 variantes → botões (suportam disabled por botão)
+  if (variantes.length <= 5) {
+    const rows = [];
+    const rowAtual = new ActionRowBuilder();
+    for (const v of variantes) {
+      const temEstoque = isCoins || (db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id)?.c || 0) > 0;
+      const preco = `R$ ${Number(v.preco).toFixed(2)}`;
+      const nome  = sanitizar(v.nome, 50);
+      const label = `${nome} — ${preco}`.slice(0, 80);
+      rowAtual.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`painel_comprar_var_${v.id}`)
+          .setLabel(temEstoque ? label : `❌ ${label}`.slice(0, 80))
+          .setStyle(temEstoque ? ButtonStyle.Success : ButtonStyle.Secondary)
+          .setDisabled(!temEstoque),
+      );
     }
-    const preco   = `R$ ${Number(v.preco).toFixed(2)}`;
-    const nomeRaw = (v.nome || 'Plano').normalize('NFKD').replace(/[^\x20-\x7E\u00C0-\u024F]/g, '');
-    const nome    = nomeRaw.slice(0, 90 - preco.length) || 'Plano';
-    const label   = `${nome} • ${preco}`.slice(0, 100);
-    const descRaw = (v.descricao || descBase).normalize('NFKD').replace(/[^\x20-\x7E\u00C0-\u024F]/g, '');
-    const description = (descRaw || descBase).slice(0, 100);
-    return { label, description, value: v.id };
+    rows.push(rowAtual);
+    return rows;
+  }
+
+  // >5 variantes → SelectMenu via JSON raw (evita validação shapeshift com chars especiais)
+  const options = variantes.slice(0, 25).map(v => {
+    const temEstoque = isCoins || (db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id)?.c || 0) > 0;
+    const preco = `R$ ${Number(v.preco).toFixed(2)}`;
+    const nome  = sanitizar(v.nome, 90 - preco.length) || 'Plano';
+    const label = `${temEstoque ? '' : '❌ '}${nome} • ${preco}`.slice(0, 100);
+    const desc  = sanitizar(v.descricao || (temEstoque ? 'Disponivel' : 'Sem estoque'), 100);
+    return { label, description: desc, value: v.id };
   });
 
-  return [new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId(`painel_selecionar_${painelId}`)
-      .setPlaceholder('Selecione um plano')
-      .addOptions(options),
-  )];
+  return [{ type: 1, components: [{ type: 3, custom_id: `painel_selecionar_${painelId}`, placeholder: 'Selecione um plano', options, min_values: 1, max_values: 1 }] }];
 }
 
 // ─── Atualizar painel após mudança de estoque ─────────────────────────────────
-// REGRA: nunca re-enviar a imagem na edição — apenas atualiza fields de estoque
-// e componentes. A imagem fica como está na mensagem original.
 async function atualizarPainelProduto(guild, painelId) {
   try {
     const painel = db.prepare('SELECT * FROM paineis_canal WHERE id=?').get(painelId);
-    if (!painel?.mensagem_id) { console.log(`[PainelProduto] sem mensagem_id`); return; }
+    if (!painel?.mensagem_id) return;
 
     const produto = db.prepare('SELECT * FROM produtos WHERE id=?').get(painel.produto_id);
-    if (!produto) { console.log(`[PainelProduto] produto não encontrado`); return; }
+    if (!produto) return;
 
     const variantes = db.prepare('SELECT * FROM variantes_produto WHERE produto_id=? AND ativo=1 ORDER BY ordem ASC').all(painel.produto_id);
-    console.log(`[PainelProduto] Atualizando painel ${painelId.slice(0,8)} — produto: ${produto.nome} — ${variantes.length} variante(s)`);
+    console.log(`[PainelProduto] Atualizando ${painelId.slice(0,8)} — ${produto.nome} — ${variantes.length} variante(s)`);
 
     const canal = guild.channels.cache.get(painel.canal_id);
-    if (!canal) { console.log(`[PainelProduto] canal ${painel.canal_id} não encontrado`); return; }
+    if (!canal) return;
 
-    console.log(`[PainelProduto] Buscando mensagem ${painel.mensagem_id}...`);
     const msg = await canal.messages.fetch(painel.mensagem_id);
-    console.log(`[PainelProduto] Mensagem encontrada.`);
-
-    const isCoins = produto.nome?.toLowerCase().includes('coin') || produto.tipo === 'coins';
-
-    const options = variantes.slice(0, 25).map(v => {
-      let descBase;
-      if (isCoins) {
-        descBase = 'Entrega automatica';
-      } else {
-        const c  = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id)?.c || 0;
-        descBase = c === 0 ? 'Sem estoque' : `${c} disponivel`;
-      }
-      const preco = `R$ ${Number(v.preco).toFixed(2)}`;
-      // Normaliza o nome: remove caracteres Unicode especiais, mantém só ASCII + comum
-      const nomeRaw  = (v.nome || 'Plano').normalize('NFKD').replace(/[^\x20-\x7E\u00C0-\u024F]/g, '');
-      const nome     = nomeRaw.slice(0, 90 - preco.length) || 'Plano';
-      const label    = `${nome} • ${preco}`.slice(0, 100);
-      const descRaw  = (v.descricao || descBase).normalize('NFKD').replace(/[^\x20-\x7E\u00C0-\u024F]/g, '');
-      const desc     = descRaw.slice(0, 100) || descBase.slice(0, 100);
-      console.log(`  [opt] label="${label}" (${label.length}) desc="${desc}" value="${v.id}"`);
-      return { label, description: desc, value: v.id };
-    });
-
-    const components = [];
-    if (options.length) {
-      try {
-        // Construir o componente via JSON direto para evitar validação do shapeshift
-        const menuJson = {
-          type: 3, // STRING_SELECT
-          custom_id: `painel_selecionar_${painelId}`,
-          placeholder: 'Selecione um plano',
-          options: options.map(o => ({
-            label:       o.label,
-            description: o.description,
-            value:       o.value,
-          })),
-          min_values: 1,
-          max_values: 1,
-        };
-        const rowJson = { type: 1, components: [menuJson] };
-        components.push(rowJson);
-        console.log(`[PainelProduto] Menu montado via JSON — ${options.length} option(s)`);
-      } catch (menuErr) {
-        console.error('[PainelProduto] Erro no menu:', menuErr.message);
-      }
-    }
 
     const cor   = parseInt(painel.cor || 'FF6B6B', 16);
     const embed = new EmbedBuilder()
@@ -434,13 +391,23 @@ async function atualizarPainelProduto(guild, painelId) {
       .setTimestamp()
       .setFooter({ text: 'Máximo Store • Selecione um plano para comprar' });
 
-    console.log(`[PainelProduto] Enviando edit — ${components.length} componente(s)...`);
+    // Imagem: URL salva no banco (sempre válida) ou URL externa do embed original
+    const imagemBanco = painel.imagem_url || null;
+    const embedOriginal = msg.embeds[0];
+    const imagemOriginal = embedOriginal?.image?.url || embedOriginal?.thumbnail?.url || null;
+    const imagemCDN = imagemOriginal &&
+      !imagemOriginal.includes('cdn.discordapp.com/attachments') &&
+      !imagemOriginal.includes('media.discordapp.net/attachments')
+      ? imagemOriginal : null;
+    const imagemValida = imagemBanco || imagemCDN;
+    if (imagemValida) embed.setImage(imagemValida);
+
+    const components = montarComponentes(variantes, painelId);
     await msg.edit({ embeds: [embed], components, attachments: [] });
     console.log(`[PainelProduto] Edit OK ✅`);
   } catch (err) {
     console.error('[PainelProduto] Erro ao atualizar:', err.message);
     if (err.rawError) console.error('[PainelProduto] Raw:', JSON.stringify(err.rawError));
-    if (err.stack) console.error('[PainelProduto] Stack:', err.stack.split('\n')[1]);
   }
 }
 
