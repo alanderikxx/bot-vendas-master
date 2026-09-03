@@ -332,7 +332,10 @@ async function iniciarCompraVariante(interaction, varianteId, client) {
   if (!produto || !produto.ativo) return interaction.editReply({ content: '❌ Produto indisponível.' });
 
   // Detectar se é produto de coins (entrega automática — sem estoque_variante)
-  const isCoins = produto.nome.toLowerCase().includes('coin') || produto.tipo === 'coins';
+  const nomeNorm = produto.nome.toLowerCase().normalize('NFKD').replace(/[^\x20-\x7E]/g, '');
+  const isCoins  = nomeNorm.includes('coin') || produto.tipo === 'coins';
+
+  console.log(`[Compra] produto="${produto.nome}" nomeNorm="${nomeNorm}" isCoins=${isCoins}`);
 
   // Verificar estoque — apenas se não for coins
   if (!isCoins) {
