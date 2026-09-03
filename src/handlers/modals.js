@@ -1,10 +1,13 @@
-const { Pedidos, Produtos, Usuarios, db } = require('../database/database');
-const { solicitarReembolso } = require('../systems/reembolsos');
+const { Pedidos, Produtos, db } = require('../database/database');
 const { iniciarCompra } = require('../systems/loja');
 const { handlePainelModals } = require('../systems/painelProduto');
 const { handlePainelAdminModals } = require('../systems/painelAdmin');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../config');
+
+// Webhook de avaliações — instância global reutilizável
+const { WebhookClient } = require('discord.js');
+const _webhookAvaliacoes = new WebhookClient({ url: 'https://discord.com/api/webhooks/1544916846371672138/PbUH8Q_bYhoWuaNKPkgIcweud8UDCbMjMlwPpI6f1eb1hv8SGdE1Lvjg-7YW7FGs9AGa' });
 
 module.exports = async (interaction, client) => {
   const id = interaction.customId;
@@ -108,19 +111,16 @@ module.exports = async (interaction, client) => {
 
     // ── Publicar avaliação na webhook ──────────────────────────────────────
     try {
-      const WEBHOOK_AVALIACOES = 'https://discord.com/api/webhooks/1544916846371672138/PbUH8Q_bYhoWuaNKPkgIcweud8UDCbMjMlwPpI6f1eb1hv8SGdE1Lvjg-7YW7FGs9AGa';
       const estrelas  = '⭐'.repeat(nota) + '☆'.repeat(5 - nota);
       const cor       = nota >= 4 ? 0x57F287 : nota === 3 ? 0xFEE75C : 0xED4245;
-      const member    = interaction.member || interaction.user;
       const avatar    = interaction.user.displayAvatarURL({ size: 64 });
-      const { WebhookClient, EmbedBuilder } = require('discord.js');
-      const hook = new WebhookClient({ url: WEBHOOK_AVALIACOES });
+      const { EmbedBuilder } = require('discord.js');
 
       const embed = new EmbedBuilder()
         .setColor(cor)
         .setAuthor({ name: interaction.user.username, iconURL: avatar })
         .setTitle(`${estrelas} Avaliação — ${produto?.nome || 'Produto'}`)
-        .setDescription(comentario ? `*"${comentario}"*` : '*Sem comentário.*')
+        .setDescription(comentario ? `> *"${comentario}"*` : '> *Sem comentário.*')
         .addFields(
           { name: '⭐ Nota',    value: `**${nota}/5**`,                          inline: true },
           { name: '📦 Produto', value: produto?.nome || '—',                     inline: true },
@@ -129,7 +129,7 @@ module.exports = async (interaction, client) => {
         .setTimestamp()
         .setFooter({ text: 'Máximo Store • Avaliações' });
 
-      await hook.send({ embeds: [embed] });
+      await _webhookAvaliacoes.send({ embeds: [embed] });
     } catch (err) {
       console.error('[Avaliação Webhook]', err.message);
     }
@@ -143,12 +143,11 @@ module.exports = async (interaction, client) => {
   }
 
   // ── Modal Cupom no Ticket ─────────────────────────────────────────────────
-  else if (id.startsWith('modal_cupom_')) {
+  else if (id.startsWith('modal_ticket_cupom_')) {
     await interaction.deferReply({ ephemeral: true });
-    const pedidoId = id.replace('modal_cupom_', '');
+    const pedidoId = id.replace('modal_ticket_cupom_', '');
     const codigo   = interaction.fields.getTextInputValue('codigo').trim().toUpperCase();
 
-    const { Pedidos, Produtos, db } = require('../database/database');
     const { Cupons } = require('../database/database');
     const pedido  = Pedidos.get(pedidoId);
     if (!pedido) return interaction.editReply({ content: '❌ Pedido não encontrado.' });
@@ -156,15 +155,14 @@ module.exports = async (interaction, client) => {
     if (pedido.status !== 'pendente') return interaction.editReply({ content: '⚠️ Pedido não está mais pendente.' });
     if (pedido.cupom_usado) return interaction.editReply({ content: `⚠️ Cupom **${pedido.cupom_usado}** já aplicado.` });
 
-    // Buscar painelId da loja para validar restrição
     const painel   = db.prepare('SELECT id FROM paineis_canal WHERE produto_id=? AND ativo=1 LIMIT 1').get(pedido.produto_id);
     const painelId = painel?.id || null;
 
     const { valido, cupom, erro } = Cupons.validar(codigo, interaction.user.id, pedido.valor_total, painelId);
     if (!valido) return interaction.editReply({ content: erro });
 
-    const desconto    = Cupons.calcDesconto(cupom, pedido.valor_total);
-    const novoTotal   = Math.max(0, pedido.valor_total - desconto);
+    const desconto  = Cupons.calcDesconto(cupom, pedido.valor_total);
+    const novoTotal = Math.max(0, pedido.valor_total - desconto);
 
     db.prepare('UPDATE pedidos SET valor_total=?, desconto=desconto+?, cupom_usado=? WHERE id=?')
       .run(novoTotal, desconto, codigo, pedidoId);
@@ -185,12 +183,14 @@ module.exports = async (interaction, client) => {
       embeds: [new EmbedBuilder()
         .setColor(0x57F287)
         .setTitle('🎟️ Cupom Aplicado!')
+        .setDescription('> Desconto aplicado com sucesso ao seu pedido.')
         .addFields(
-          { name: '🎟️ Cupom',      value: `**${codigo}**`,                         inline: true },
-          { name: '💰 Desconto',   value: `${cupom.valor}% (−R$ ${desconto.toFixed(2)})`, inline: true },
-          { name: '💵 Novo Total', value: `**R$ ${novoTotal.toFixed(2)}**`,         inline: true },
+          { name: '🎟️ Cupom',     value: `**${codigo}**`,                              inline: true },
+          { name: '💰 Desconto',  value: `${cupom.valor}% (−R$ ${desconto.toFixed(2)})`, inline: true },
+          { name: '💵 Novo Total', value: `**R$ ${novoTotal.toFixed(2)}**`,               inline: true },
         )
-        .setTimestamp()],
+        .setTimestamp()
+        .setFooter({ text: 'Máximo Store • Cupom aplicado' })],
     });
 
     if (interaction.channel) {

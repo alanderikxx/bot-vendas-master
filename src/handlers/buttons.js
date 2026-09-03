@@ -1,19 +1,17 @@
-const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
-const { mostrarProduto, iniciarCompra, entregarProduto } = require('../systems/loja');
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { iniciarCompra, entregarProduto } = require('../systems/loja');
 const { fecharTicket, assumirTicket, gerarTranscript } = require('../systems/tickets');
 const { adicionarAoCarrinho, removerDoCarrinho, limparCarrinho, mostrarCarrinho, listarCarrinho, calcularTotal } = require('../systems/carrinho');
-const { abrirCaixa, menuCaixas, historicoCaixas } = require('../systems/caixaMisteriosa');
-const { solicitarReembolso } = require('../systems/reembolsos');
-const { painelAfiliado, solicitarSaque } = require('../systems/afiliados');
+const { solicitarSaque } = require('../systems/afiliados');
 const { Pedidos, Produtos, Usuarios, db } = require('../database/database');
 const { isStaff } = require('../utils/permissions');
 const { Embeds } = require('../utils/embeds');
-const efi = require('../systems/efi');
 const { log } = require('../utils/logger');
 const painelButtons = require('./painelButtons');
+const config = require('../config');
 
 const painelProdutoHandler = require('./painelProdutoHandler');
-const { handlePainelBuilder, handlePainelModals } = require('../systems/painelProduto');
+const { handlePainelBuilder } = require('../systems/painelProduto');
 const { handlePainelAdmin } = require('../systems/painelAdmin');
 
 module.exports = async (interaction, client) => {
@@ -21,8 +19,8 @@ module.exports = async (interaction, client) => {
 
   // ── Abrir caixa misteriosa ────────────────────────────────────────────────────
   if (id === 'abrir_caixa_misteriosa') {
-    const { abrirCaixa } = require('../systems/caixaMisteriosa');
-    return abrirCaixa(interaction, client);
+    const { iniciarCompraCaixa } = require('../systems/caixaMisteriosa');
+    return iniciarCompraCaixa(interaction, null, client);
   }
 
   // ── Histórico da caixa ────────────────────────────────────────────────────────
@@ -260,7 +258,7 @@ module.exports = async (interaction, client) => {
 
     const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
     const modal = new ModalBuilder()
-      .setCustomId(`modal_cupom_${pedidoId}`)
+      .setCustomId(`modal_ticket_cupom_${pedidoId}`)
       .setTitle('🎟️ Aplicar Cupom');
     modal.addComponents(
       new ActionRowBuilder().addComponents(
@@ -497,8 +495,14 @@ module.exports = async (interaction, client) => {
   }
 
   // ── Caixas Misteriosas ───────────────────────────────────────────────────────
-  if (id === 'caixas_listar') return menuCaixas(interaction);
-  if (id === 'caixa_historico') return historicoCaixas(interaction);
+  if (id === 'caixas_listar') {
+    const { menuCaixas } = require('../systems/caixaMisteriosa');
+    return menuCaixas(interaction);
+  }
+  if (id === 'caixa_historico' || id === 'historico_caixa') {
+    const { mostrarHistorico } = require('../systems/caixaMisteriosa');
+    return mostrarHistorico(interaction);
+  }
 
   // ── Afiliados ────────────────────────────────────────────────────────────────
   if (id === 'perfil_ver') {
@@ -541,16 +545,8 @@ module.exports = async (interaction, client) => {
   // ── Comprar caixa misteriosa (pelo botão gerado no selectMenu) ───────────
   if (id.startsWith('comprar_caixa_')) {
     const caixaId = id.replace('comprar_caixa_', '');
-    const caixa = db.prepare('SELECT * FROM caixas_misteriosas WHERE id=?').get(caixaId);
-    if (!caixa) return interaction.reply({ content: '❌ Caixa não encontrada.', ephemeral: true });
-
-    // Criar pedido para a caixa e processar pagamento
-    const { iniciarCompraCaixa } = require('../systems/loja');
-    if (typeof iniciarCompraCaixa === 'function') {
-      return iniciarCompraCaixa(interaction, caixaId);
-    }
-    // Fallback: usar compra direta
-    return interaction.reply({ content: `💰 Use \`/caixa abrir\` e selecione **${caixa.nome}** para comprar por R$ ${caixa.preco.toFixed(2)}.`, ephemeral: true });
+    const { iniciarCompraCaixa } = require('../systems/caixaMisteriosa');
+    return iniciarCompraCaixa(interaction, caixaId, client);
   }
 };
 

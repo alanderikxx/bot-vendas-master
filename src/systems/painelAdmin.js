@@ -14,19 +14,14 @@ const moment  = require('moment-timezone');
 
 const CANAL_PAINEL = '1533638769901703178';
 
-// ─── Submenus disponíveis ─────────────────────────────────────────────────────
-// Loja+ pode ver: pa_menu_loja
-// Admin+ pode ver: pa_menu_operacoes, pa_menu_usuarios, pa_menu_caixa
+// ─── Cache de stats (TTL 30s) ─────────────────────────────────────────────────
+let _statsCache = null;
+let _statsCacheTs = 0;
 
-// ─── Embed e rows por submenu ─────────────────────────────────────────────────
-
-async function buildHome(member) {
-  const hoje      = Math.floor(new Date().setHours(0,0,0,0)/1000);
-  const lojaAberta = Config.get('loja_aberta');
-  const manutencao = Config.get('manutencao') === true;
-  const nomeLoja   = Config.get('nome_loja') || 'Máximo Store';
-
-  const s = db.prepare(`
+function getStats() {
+  if (_statsCache && Date.now() - _statsCacheTs < 30000) return _statsCache;
+  const hoje = Math.floor(new Date().setHours(0,0,0,0)/1000);
+  _statsCache = db.prepare(`
     SELECT
       (SELECT COUNT(*) FROM pedidos WHERE status IN ('pago','entregue'))                           AS total_vendas,
       (SELECT COALESCE(SUM(valor_total),0) FROM pedidos WHERE status IN ('pago','entregue'))        AS receita_total,
@@ -39,6 +34,19 @@ async function buildHome(member) {
       (SELECT COUNT(*) FROM produtos WHERE ativo=1)                                                AS produtos,
       (SELECT COUNT(*) FROM paineis_canal WHERE ativo=1)                                           AS paineis
   `).get(hoje, hoje);
+  _statsCacheTs = Date.now();
+  return _statsCache;
+}
+
+// ─── Embed e rows por submenu ─────────────────────────────────────────────────
+
+async function buildHome(member) {
+  const hoje      = Math.floor(new Date().setHours(0,0,0,0)/1000);
+  const lojaAberta = Config.get('loja_aberta');
+  const manutencao = Config.get('manutencao') === true;
+  const nomeLoja   = Config.get('nome_loja') || 'Máximo Store';
+
+  const s = getStats();
 
   const statusEmoji = manutencao ? '🔧' : '🟢';
   const statusTxt   = manutencao ? 'Manutenção' : 'Online';
@@ -329,6 +337,7 @@ async function handlePainelAdmin(interaction, client) {
     const atual = Config.get('manutencao') === true || Config.get('manutencao') === '1';
     // Salvar como boolean explícito para Config.get retornar corretamente
     db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('manutencao',?,'boolean')").run(atual ? '0' : '1');
+    _statsCache = null; // invalidar cache
     await interaction.reply({ content: `✅ Manutenção ${atual ? 'desativada ✅' : 'ativada 🔧'}.`, ephemeral: true });
     return atualizarPainelAdmin(interaction.guild);
   }

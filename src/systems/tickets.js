@@ -539,6 +539,6 @@ async function gerarTranscript(interaction) {
 
 module.exports = {
   abrirTicket, fecharTicket, assumirTicket,
-  liberarSemPagamento, gerarTranscript,
+  gerarTranscript,
   gerarTranscricao, enviarTranscricao,
 };

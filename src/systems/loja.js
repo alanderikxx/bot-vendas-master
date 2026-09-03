@@ -751,13 +751,14 @@ async function processarCompraBoleto(interaction, produtoId, dadosCliente) {
   const embed = new EmbedBuilder()
     .setColor(config.colors.info)
     .setTitle('📄 Boleto Bancário')
-    .setDescription('⚠️ Pode levar até **2 dias úteis** para compensar.')
+    .setDescription('> ⚠️ Pode levar até **2 dias úteis** para compensar.')
     .addFields(
       { name: '📦 Produto', value: produto.nome,                                     inline: true },
       { name: '💵 Valor',   value: `R$ ${precoFinal.toFixed(2)}`,                   inline: true },
       { name: '🆔 Pedido',  value: `\`${pedidoId.slice(0,8).toUpperCase()}\``,     inline: true },
     )
-    .setTimestamp();
+    .setTimestamp()
+    .setFooter({ text: 'Máximo Store • Boleto Bancário' });
   if (boleto?.link)        embed.addFields({ name: '🔗 Link',          value: boleto.link });
   if (boleto?.barcodeData) embed.addFields({ name: '📊 Código Barras', value: `\`\`\`${boleto.barcodeData}\`\`\`` });
   await interaction.editReply({ embeds: [embed] });
