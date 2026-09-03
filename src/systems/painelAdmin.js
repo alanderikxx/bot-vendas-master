@@ -513,7 +513,15 @@ async function handlePainelAdmin(interaction, client) {
       }
       embed.addFields({ name: `🎟️ ${c.codigo}`, value: `**${val}** • ${lim} • Exp: ${exp}\n🏪 ${lojas}`, inline: false });
     }
-    return interaction.editReply({ embeds: [embed] });
+    // Botões de publicar para cada cupom (até 5)
+    const rowsPub = [];
+    for (let i = 0; i < Math.min(cupons.length, 5); i++) {
+      const c = cupons[i];
+      rowsPub.push(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`pa_pub_cupom_${c.id}`).setLabel(`📢 Publicar: ${c.codigo}`).setStyle(ButtonStyle.Primary),
+      ));
+    }
+    return interaction.editReply({ embeds: [embed], components: rowsPub });
   }
 
   if (id === 'pa_estoque_baixo') {
@@ -819,6 +827,46 @@ async function handlePainelAdmin(interaction, client) {
     const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
     top.forEach((u,i) => embed.addFields({ name: `${medals[i]} ${u.nome||'?'}`, value: `R$ ${(u.total_gasto||0).toFixed(2)} • ${u.total_compras||0} compras`, inline: true }));
     return interaction.editReply({ embeds: [embed] });
+  }
+
+  // ─── Publicar cupom no canal ─────────────────────────────────────────────
+  if (id.startsWith('pa_pub_cupom_')) {
+    if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const cupomId = id.replace('pa_pub_cupom_', '');
+    const c = db.prepare('SELECT * FROM cupons WHERE id=?').get(cupomId);
+    if (!c) return interaction.editReply({ content: '❌ Cupom não encontrado.' });
+
+    const CANAL_CUPONS = '1530039474082283610';
+    const canal = interaction.guild.channels.cache.get(CANAL_CUPONS);
+    if (!canal) return interaction.editReply({ content: '❌ Canal de cupons não encontrado.' });
+
+    const dataValidade = c.validade ? new Date(c.validade * 1000).toLocaleDateString('pt-BR') : '∞';
+    const lojasLabel   = (() => {
+      if (!c.lojas_validas) return 'Todas as lojas';
+      try { const a = JSON.parse(c.lojas_validas); return `${a.length} loja(s) específica(s)`; } catch { return 'Todas as lojas'; }
+    })();
+
+    const embedPub = {
+      color: 0xFFD700,
+      title: '🎟️ Cupom de Desconto Disponível!',
+      description: [
+        '> Use o código abaixo para obter desconto na loja.',
+        '> Cole no campo de cupom durante a compra.',
+      ].join('\n'),
+      fields: [
+        { name: '🔑 Código',        value: `\`\`\`${c.codigo}\`\`\``,          inline: false },
+        { name: '💰 Desconto',      value: `**${c.valor}%** off`,               inline: true },
+        { name: '📅 Válido até',    value: `**${dataValidade}**`,                inline: true },
+        { name: '👤 Usos/pessoa',   value: `**${c.usos_por_usuario || 1}x**`,   inline: true },
+        { name: '🏪 Lojas válidas', value: lojasLabel,                          inline: false },
+      ],
+      timestamp: new Date().toISOString(),
+      footer: { text: 'Máximo Store • Use o código acima para garantir seu desconto!' },
+    };
+
+    await canal.send({ embeds: [embedPub] });
+    return interaction.editReply({ content: `✅ Cupom **\`${c.codigo}\`** publicado em <#${CANAL_CUPONS}>!` });
   }
 
   // ─── Dar coins para todos os usuários do servidor ───────────────────────

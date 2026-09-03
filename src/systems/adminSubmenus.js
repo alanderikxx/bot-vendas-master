@@ -419,23 +419,45 @@ async function cupomSalvar(interaction) {
 
   const lojasValidas = s.lojas?.length ? JSON.stringify(s.lojas) : null;
   const validadeTs   = Math.floor(Date.now() / 1000) + ((s.dias || 30) * 86400);
+  const cupomId      = uuidv4();
 
   db.prepare('INSERT INTO cupons (id,codigo,tipo,valor,usos_max,usos_por_usuario,validade,lojas_validas,criado_por) VALUES (?,?,?,?,?,?,?,?,?)')
-    .run(uuidv4(), codigo.toUpperCase(), 'percentual', s.valor, 9999, s.limiteUso || 1, validadeTs, lojasValidas, interaction.user.id);
+    .run(cupomId, codigo.toUpperCase(), 'percentual', s.valor, 9999, s.limiteUso || 1, validadeTs, lojasValidas, interaction.user.id);
 
   del(interaction.user.id, 'cupom');
-  await interaction.editReply({
-    embeds: [new EmbedBuilder().setColor(config.colors.success).setTitle('✅ Cupom Criado!')
-      .addFields(
-        { name: '🔑 Código',       value: `\`${codigo.toUpperCase()}\``,              inline: true },
-        { name: '💰 Desconto',     value: `**${s.valor}%**`,                          inline: true },
-        { name: '📅 Validade',     value: `**${s.dias || 30} dias**`,                 inline: true },
-        { name: '👤 Limite/user',  value: `**${s.limiteUso || 1}x**`,                 inline: true },
-        { name: '🏪 Lojas',        value: s.lojas?.length ? `${s.lojas.length} loja(s)` : 'Todas', inline: true },
-      )
-      .setTimestamp()],
-    components: [],
-  });
+
+  const lojasLabel = s.lojas?.length ? `${s.lojas.length} loja(s) específica(s)` : 'Todas as lojas';
+  const dataValidade = new Date((validadeTs) * 1000).toLocaleDateString('pt-BR');
+
+  const embedCriado = new EmbedBuilder()
+    .setColor(0xFFD700)
+    .setTitle('🎟️ Cupom Criado com Sucesso!')
+    .setDescription([
+      `> Use o código abaixo para obter desconto na loja.`,
+      `> Compartilhe apenas com quem deve receber o benefício.`,
+    ].join('\n'))
+    .addFields(
+      { name: '🔑 Código',        value: `\`\`\`${codigo.toUpperCase()}\`\`\``,      inline: false },
+      { name: '💰 Desconto',      value: `**${s.valor}%** off`,                       inline: true },
+      { name: '📅 Válido até',    value: `**${dataValidade}**`,                        inline: true },
+      { name: '👤 Usos/pessoa',   value: `**${s.limiteUso || 1}x**`,                  inline: true },
+      { name: '🏪 Lojas válidas', value: lojasLabel,                                  inline: false },
+    )
+    .setTimestamp()
+    .setFooter({ text: 'Máximo Store • Cupom gerado com sucesso' });
+
+  const rowPublicar = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`pa_pub_cupom_${cupomId}`)
+      .setLabel('📢 Publicar no canal de cupons')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('pa_menu_loja')
+      .setLabel('🔙 Voltar ao Menu')
+      .setStyle(ButtonStyle.Secondary),
+  );
+
+  await interaction.editReply({ embeds: [embedCriado], components: [rowPublicar] });
 }
 
 async function cupomCancelar(interaction) {
