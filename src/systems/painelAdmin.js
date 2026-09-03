@@ -181,11 +181,11 @@ function buildUsuariosMenu() {
     .setTimestamp();
 
   const row1 = new ActionRowBuilder().addComponents(
-    btn('pa_buscar_usuario', '🔍 Buscar',        ButtonStyle.Primary),
-    btn('pa_add_coins',      '🪙 Add Coins',      ButtonStyle.Success),
-    btn('pa_remover_coins',  '🪙 Rem Coins',      ButtonStyle.Danger),
-    btn('pa_gerar_codigos',  '🎫 Gerar Códigos',  ButtonStyle.Secondary),
-    btn('pa_ranking',        '🏆 Ranking',        ButtonStyle.Secondary),
+    btn('pa_buscar_usuario',  '🔍 Buscar',         ButtonStyle.Primary),
+    btn('pa_add_coins',       '🪙 Add Coins',       ButtonStyle.Success),
+    btn('pa_remover_coins',   '🪙 Rem Coins',       ButtonStyle.Danger),
+    btn('pa_gerar_codigos',   '🎫 Gerar Códigos',   ButtonStyle.Secondary),
+    btn('pa_coins_todos',     '🎁 Coins p/ Todos',  ButtonStyle.Success),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
@@ -775,10 +775,11 @@ async function handlePainelAdmin(interaction, client) {
 
   if (id === 'pa_gerar_codigos') {
     if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner pode gerar códigos.', ephemeral: true });
-    const modal = new ModalBuilder().setCustomId('pam_gerar_codigos').setTitle('🎫 Gerar Códigos de Coins');
+    const modal = new ModalBuilder().setCustomId('pam_gerar_codigos').setTitle('🎫 Gerar Código de Coins');
     modal.addComponents(
       mRow(new TextInputBuilder().setCustomId('coins').setLabel('Coins por código').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 500 (= R$5,00)')),
       mRow(new TextInputBuilder().setCustomId('quantidade').setLabel('Quantidade de códigos (máx: 50)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 10')),
+      mRow(new TextInputBuilder().setCustomId('discord_id').setLabel('ID do usuário (vazio = envia só pra você)').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Ex: 123456789012345678')),
     );
     return interaction.showModal(modal);
   }
@@ -801,6 +802,17 @@ async function handlePainelAdmin(interaction, client) {
     const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
     top.forEach((u,i) => embed.addFields({ name: `${medals[i]} ${u.nome||'?'}`, value: `R$ ${(u.total_gasto||0).toFixed(2)} • ${u.total_compras||0} compras`, inline: true }));
     return interaction.editReply({ embeds: [embed] });
+  }
+
+  // ─── Dar coins para todos os usuários do servidor ───────────────────────
+  if (id === 'pa_coins_todos') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_coins_todos').setTitle('🎁 Coins para Todos');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('quantidade').setLabel('Quantidade de coins para cada usuário').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 5')),
+      mRow(new TextInputBuilder().setCustomId('motivo').setLabel('Motivo (aparece na transação)').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Ex: Bônus de boas-vindas')),
+    );
+    return interaction.showModal(modal);
   }
 
   // ─── Bloquear/desbloquear usuário ────────────────────────────────────────
@@ -1231,6 +1243,7 @@ async function handlePainelAdminModals(interaction, client) {
     if (!isOwner(interaction.member)) return interaction.editReply({ content: '❌ Apenas o Owner.' });
     const coins = parseInt(interaction.fields.getTextInputValue('coins').trim());
     const qtd2  = Math.min(parseInt(interaction.fields.getTextInputValue('quantidade').trim()), 50);
+    const alvoId = interaction.fields.getTextInputValue('discord_id').trim().replace(/[<@>]/g, '') || null;
     if (isNaN(coins)||coins<=0) return interaction.editReply({ content: '❌ Valor de coins inválido.' });
     if (isNaN(qtd2)||qtd2<=0)  return interaction.editReply({ content: '❌ Quantidade inválida.' });
 
@@ -1241,21 +1254,40 @@ async function handlePainelAdminModals(interaction, client) {
 
     const embedCod = new EmbedBuilder()
       .setColor(config.colors.coins || config.colors.gold)
-      .setTitle(`🎫 ${qtd2} Código(s) Gerado(s)`)
+      .setTitle(`🎫 ${qtd2} Código(s) de Coins`)
       .setDescription([
         `${CE} **Valor:** ${coins.toLocaleString('pt-BR')} coins (R$ ${valorReais}) cada`,
         `📦 **Quantidade:** ${qtd2}`,
-        `🔒 Uso único — cada código só pode ser resgatado uma vez`,
+        `🔒 Uso único por código`,
         '',
         '```',
         codigos.join('\n'),
         '```',
       ].join('\n'))
       .setTimestamp()
-      .setFooter({ text: 'Guarde com segurança!' });
+      .setFooter({ text: 'Máximo Store • Guarde com segurança!' });
 
+    // Enviar para o usuário informado ou para o próprio admin
+    let enviado = false;
+    if (alvoId) {
+      try {
+        const guild  = interaction.guild;
+        const member = await guild.members.fetch(alvoId).catch(() => null);
+        if (member) {
+          await member.send({ embeds: [embedCod] });
+          enviado = true;
+          return interaction.editReply({ content: `✅ **${qtd2} código(s)** gerado(s) e enviado(s) no privado de <@${alvoId}>!\n${CE} ${coins.toLocaleString('pt-BR')} coins (R$ ${valorReais}) cada.` });
+        } else {
+          return interaction.editReply({ content: `❌ Usuário \`${alvoId}\` não encontrado no servidor.` });
+        }
+      } catch {
+        return interaction.editReply({ content: `❌ Não foi possível enviar DM para <@${alvoId}>. A pessoa pode ter DMs desativadas.` });
+      }
+    }
+
+    // Sem ID informado — envia para o admin
     await interaction.user.send({ embeds: [embedCod] }).catch(() => {});
-    return interaction.editReply({ content: `✅ **${qtd2} código(s)** gerado(s)!\nValor: ${coins.toLocaleString('pt-BR')} coins (R$ ${valorReais}) cada.\nCódigos enviados na sua **DM** por segurança.` });
+    return interaction.editReply({ content: `✅ **${qtd2} código(s)** gerado(s)!\n${CE} ${coins.toLocaleString('pt-BR')} coins (R$ ${valorReais}) cada.\nCódigos enviados na sua **DM**.` });
   }
 
   if (id === 'pam_anuncio') {
@@ -1273,6 +1305,22 @@ async function handlePainelAdminModals(interaction, client) {
     const motivo    = interaction.fields.getTextInputValue('motivo').trim();
     Usuarios.bloquear(discordId, motivo);
     return interaction.editReply({ content: `🚫 <@${discordId}> bloqueado com sucesso.\n**Motivo:** ${motivo}` });
+  }
+
+  if (id === 'pam_coins_todos') {
+    await interaction.deferReply({ ephemeral: true });
+    if (!isAdmin(interaction.member)) return interaction.editReply({ content: '❌ Apenas admins.' });
+    const qtd    = parseInt(interaction.fields.getTextInputValue('quantidade').trim());
+    const motivo = interaction.fields.getTextInputValue('motivo').trim() || 'Bônus para todos';
+    if (isNaN(qtd) || qtd <= 0) return interaction.editReply({ content: '❌ Quantidade inválida.' });
+
+    const { addCoins, COIN_EMOJI } = require('./coins');
+    const usuarios = db.prepare('SELECT discord_id FROM usuarios').all();
+    let count = 0;
+    for (const u of usuarios) {
+      try { addCoins(u.discord_id, qtd, motivo); count++; } catch {}
+    }
+    return interaction.editReply({ content: `✅ **${qtd} ${COIN_EMOJI}** adicionados para **${count}** usuários!\n**Motivo:** ${motivo}` });
   }
   } catch (err) {
     console.error('[PainelAdminModals] Erro:', err.message, '| modal:', interaction.customId);
