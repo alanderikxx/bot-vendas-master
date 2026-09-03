@@ -74,6 +74,34 @@ module.exports = async (interaction, client) => {
       content: `✅ Avaliação registrada! ${'⭐'.repeat(nota)} para **${produto?.nome}**. Obrigado!`,
       ephemeral: true,
     });
+
+    // ── Publicar avaliação na webhook ──────────────────────────────────────
+    try {
+      const WEBHOOK_AVALIACOES = 'https://discord.com/api/webhooks/1544916846371672138/PbUH8Q_bYhoWuaNKPkgIcweud8UDCbMjMlwPpI6f1eb1hv8SGdE1Lvjg-7YW7FGs9AGa';
+      const estrelas  = '⭐'.repeat(nota) + '☆'.repeat(5 - nota);
+      const cor       = nota >= 4 ? 0x57F287 : nota === 3 ? 0xFEE75C : 0xED4245;
+      const member    = interaction.member || interaction.user;
+      const avatar    = interaction.user.displayAvatarURL({ size: 64 });
+      const { WebhookClient, EmbedBuilder } = require('discord.js');
+      const hook = new WebhookClient({ url: WEBHOOK_AVALIACOES });
+
+      const embed = new EmbedBuilder()
+        .setColor(cor)
+        .setAuthor({ name: interaction.user.username, iconURL: avatar })
+        .setTitle(`${estrelas} Avaliação — ${produto?.nome || 'Produto'}`)
+        .setDescription(comentario ? `*"${comentario}"*` : '*Sem comentário.*')
+        .addFields(
+          { name: '⭐ Nota',    value: `**${nota}/5**`,                          inline: true },
+          { name: '📦 Produto', value: produto?.nome || '—',                     inline: true },
+          { name: '🆔 Pedido',  value: `\`${pedidoId.slice(0,8).toUpperCase()}\``, inline: true },
+        )
+        .setTimestamp()
+        .setFooter({ text: 'Máximo Store • Avaliações' });
+
+      await hook.send({ embeds: [embed] });
+    } catch (err) {
+      console.error('[Avaliação Webhook]', err.message);
+    }
   }
 
   // ── Modal de compra com cupom ─────────────────────────────────────────────
