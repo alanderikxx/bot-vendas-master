@@ -389,11 +389,13 @@ async function atualizarPainelProduto(guild, painelId) {
     if (imagemValida) embed.setImage(imagemValida);
 
     const components = montarComponentes(variantes, painelId);
+    console.log(`[PainelProduto] Enviando — embed title="${embed.data.title}" components=${components.length} img=${embed.data.image?.url?.slice(0,40) || 'none'}`);
     await msg.edit({ embeds: [embed], components, attachments: [] });
     console.log(`[PainelProduto] Edit OK ✅`);
   } catch (err) {
     console.error('[PainelProduto] Erro ao atualizar:', err.message);
     if (err.rawError) console.error('[PainelProduto] Raw:', JSON.stringify(err.rawError));
+    if (err.stack)    console.error('[PainelProduto] Stack:', err.stack.split('\n').slice(0,3).join(' | '));
   }
 }
 
