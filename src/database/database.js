@@ -451,6 +451,17 @@ async function init() {
     )`);
   } catch {}
 
+  // Tabela de notificações de estoque
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS notif_estoque (
+      id           TEXT PRIMARY KEY,
+      usuario_id   TEXT NOT NULL,
+      variante_id  TEXT NOT NULL,
+      criado_em    INTEGER DEFAULT (strftime('%s','now')),
+      UNIQUE(usuario_id, variante_id)
+    )`);
+  } catch {}
+
   // Configurações padrão
   const cfgStmt = db.prepare(`INSERT OR IGNORE INTO configuracoes (chave, valor, tipo, descricao) VALUES (?, ?, ?, ?)`);
   const defaults = [

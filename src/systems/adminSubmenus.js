@@ -285,6 +285,30 @@ async function estoqueSalvar(interaction) {
   const paineis = db.prepare('SELECT * FROM paineis_canal WHERE produto_id=? AND ativo=1').all(variante.produto_id);
   for (const p of paineis) await atualizarPainelProduto(interaction.guild, p.id).catch(() => {});
 
+  // Notificar usuários que pediram aviso de estoque
+  try {
+    const notifs = db.prepare('SELECT * FROM notif_estoque WHERE variante_id=?').all(s.varianteId);
+    if (notifs.length > 0 && interaction.guild) {
+      for (const n of notifs) {
+        const member = await interaction.guild.members.fetch(n.usuario_id).catch(() => null);
+        if (member) {
+          await member.send({
+            embeds: [new EmbedBuilder()
+              .setColor(0x57F287)
+              .setTitle('🔔 Estoque Reposto!')
+              .setDescription([
+                `> O plano **${variante.nome}** que você estava esperando voltou ao estoque!`,
+                `> Acesse a loja agora para garantir o seu.`,
+              ].join('\n'))
+              .setTimestamp()
+              .setFooter({ text: 'Máximo Store • Notificação de Estoque' })],
+          }).catch(() => {});
+        }
+        db.prepare('DELETE FROM notif_estoque WHERE id=?').run(n.id);
+      }
+    }
+  } catch {}
+
   del(interaction.user.id, 'estoque');
   await interaction.editReply({
     embeds: [new EmbedBuilder().setColor(config.colors.success).setTitle('✅ Estoque Adicionado!')

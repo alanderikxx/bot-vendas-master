@@ -104,17 +104,28 @@ async function abrirTicket(guild, member, tipo = 'compra', dadosExtra = {}) {
     const idioma = getIdioma(member.id);
     const valor  = Number(dadosExtra.valor || 0);
 
+    // Posição na fila (tickets de compra abertos antes deste)
+    const posicaoFila = db.prepare("SELECT COUNT(*) as c FROM tickets WHERE status='aberto' AND tipo='compra'").get().c;
+    const filaLabel   = posicaoFila <= 1 ? '🟢 Você é o próximo!' : `🟡 Posição na fila: **${posicaoFila}**`;
+
+    // Temporizador PIX — expira em 30 minutos
+    const expiraPix = Math.floor(Date.now() / 1000) + 1800;
+
     const embedCompra = new EmbedBuilder()
       .setColor(config.colors.primary)
-      .setTitle('🛒 Novo Pedido')
-      .setDescription(`Olá, <@${member.id}>! 👋\nEscolha a forma de pagamento abaixo.`)
+      .setTitle(`🛒 Pedido — ${dadosExtra.produto || 'Produto'}`)
+      .setDescription([
+        `> Olá, <@${member.id}>! Seu pedido foi aberto com sucesso.`,
+        `> Escolha a forma de pagamento abaixo para prosseguir.`,
+      ].join('\n'))
       .addFields(
-        { name: '📦 Produto',  value: dadosExtra.produto || '—',                          inline: true },
-        { name: '💵 Valor',    value: `R$ ${valor.toFixed(2)}`,                           inline: true },
-        { name: '🆔 Pedido',   value: `\`${dadosExtra.pedidoId.slice(0,8).toUpperCase()}\``, inline: true },
-        { name: '🪙 Coins',    value: `${coins.toLocaleString('pt-BR')} (≈ R$ ${valorCoins.toFixed(2)})`, inline: true },
-        { name: '🎫 Ticket',   value: `\`${ticketId.slice(0,8).toUpperCase()}\``,         inline: true },
-        { name: '📊 Status',   value: '⏳ Aguardando pagamento',                          inline: true },
+        { name: '📦 Produto',   value: dadosExtra.produto || '—',                               inline: true },
+        { name: '💵 Valor',     value: `R$ ${valor.toFixed(2)}`,                                inline: true },
+        { name: '🆔 Pedido',    value: `\`${dadosExtra.pedidoId.slice(0,8).toUpperCase()}\``,   inline: true },
+        { name: '🪙 Coins',     value: `${coins.toLocaleString('pt-BR')} (≈ R$ ${valorCoins.toFixed(2)})`, inline: true },
+        { name: '🎫 Ticket',    value: `\`${ticketId.slice(0,8).toUpperCase()}\``,              inline: true },
+        { name: '⏰ PIX expira', value: `<t:${expiraPix}:R>`,                                   inline: true },
+        { name: '🎯 Fila',      value: filaLabel,                                               inline: false },
       )
       .setTimestamp()
       .setFooter({ text: 'Máximo Store • Sistema de Pedidos' });

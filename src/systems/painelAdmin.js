@@ -104,9 +104,9 @@ function buildLojaMenu() {
 
   const row2 = new ActionRowBuilder().addComponents(
     btn('pa_remover_plano',    '➖ Rem Plano',     ButtonStyle.Danger),
+    btn('pa_editar_plano',     '✏️ Editar Plano',  ButtonStyle.Primary),
     btn('pa_criar_cupom',      '🎟️ Criar Cupom',   ButtonStyle.Success),
     btn('pa_listar_cupons',    '🎟️ Ver Cupons',    ButtonStyle.Secondary),
-    btn('pa_estoque_baixo',    '📉 Est. Baixo',    ButtonStyle.Secondary),
     btn('pa_deletar_carrinho', '🗑️ Deletar',       ButtonStyle.Danger),
   );  const row3 = new ActionRowBuilder().addComponents(
     btn('pa_home', '🔙 Voltar', ButtonStyle.Secondary),
@@ -141,6 +141,7 @@ function buildOperacoesMenu() {
     btn('pa_tickets',     `🎫 Tickets (${s.tick})`,     s.tick > 0  ? ButtonStyle.Primary : ButtonStyle.Secondary),
     btn('pa_pendentes',   `⏳ Pendentes (${s.pend})`,   s.pend > 0  ? ButtonStyle.Primary : ButtonStyle.Secondary),
     btn('pa_relatorio',   '📊 Relatório',               ButtonStyle.Secondary),
+    btn('pa_buscar_pedido', '🔍 Buscar Pedido',         ButtonStyle.Secondary),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
@@ -346,12 +347,93 @@ async function handlePainelAdmin(interaction, client) {
       const r = db.prepare("SELECT COUNT(*) as v, COALESCE(SUM(valor_total),0) as r FROM pedidos WHERE status IN ('pago','entregue') AND pago_em>=?").get(p.inicio);
       embed.addFields({ name: `📅 ${p.nome}`, value: `${r.v} vendas • R$ ${Number(r.r).toFixed(2)}`, inline: true });
     }
-    // Botão para exportar CSV
+    // Botão para exportar CSV e gráfico
     const { AttachmentBuilder } = require('discord.js');
     const rowCsv = new ActionRowBuilder().addComponents(
-      btn('pa_exportar_csv', '📥 Exportar CSV', ButtonStyle.Secondary),
+      btn('pa_exportar_csv',      '📥 Exportar CSV',    ButtonStyle.Secondary),
+      btn('pa_grafico_vendas',    '📈 Gráfico Vendas',  ButtonStyle.Primary),
     );
     return interaction.editReply({ embeds: [embed], components: [rowCsv] });
+  }
+
+  if (id === 'pa_grafico_vendas') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+
+    // Últimos 7 dias
+    const dias = [];
+    for (let i = 6; i >= 0; i--) {
+      const inicio = Math.floor(new Date(Date.now() - i * 86400000).setHours(0,0,0,0) / 1000);
+      const fim    = inicio + 86400;
+      const r = db.prepare("SELECT COUNT(*) as v, COALESCE(SUM(valor_total),0) as r FROM pedidos WHERE status IN ('pago','entregue') AND pago_em>=? AND pago_em<?").get(inicio, fim);
+      const data = new Date(inicio * 1000);
+      dias.push({ label: `${data.getDate().toString().padStart(2,'0')}/${(data.getMonth()+1).toString().padStart(2,'0')}`, vendas: r.v, receita: Number(r.r) });
+    }
+
+    // Tentar gerar gráfico com canvas (disponível no Railway)
+    try {
+      const { createCanvas } = require('canvas');
+      const W = 700, H = 350, PAD = 50;
+      const canvas = createCanvas(W, H);
+      const ctx    = canvas.getContext('2d');
+
+      // Fundo
+      ctx.fillStyle = '#2C2F33';
+      ctx.fillRect(0, 0, W, H);
+
+      // Título
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText('📈 Vendas — Últimos 7 Dias', PAD, 30);
+
+      const maxVendas = Math.max(...dias.map(d => d.vendas), 1);
+      const barW = (W - PAD * 2) / dias.length - 10;
+      const chartH = H - PAD * 2;
+
+      dias.forEach((d, i) => {
+        const x     = PAD + i * ((W - PAD * 2) / dias.length) + 5;
+        const barH  = (d.vendas / maxVendas) * chartH;
+        const y     = H - PAD - barH;
+        const hue   = 140; // verde
+        ctx.fillStyle = `hsl(${hue}, 60%, ${40 + (d.vendas / maxVendas) * 30}%)`;
+        ctx.fillRect(x, y, barW, barH);
+        // Label data
+        ctx.fillStyle = '#AAAAAA';
+        ctx.font = '12px sans-serif';
+        ctx.fillText(d.label, x, H - PAD + 15);
+        // Valor
+        if (d.vendas > 0) {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = 'bold 12px sans-serif';
+          ctx.fillText(String(d.vendas), x + barW/2 - 5, y - 5);
+        }
+      });
+
+      // Eixo
+      ctx.strokeStyle = '#555';
+      ctx.beginPath();
+      ctx.moveTo(PAD, PAD); ctx.lineTo(PAD, H - PAD); ctx.lineTo(W - PAD, H - PAD);
+      ctx.stroke();
+
+      const buf = canvas.toBuffer('image/png');
+      const { AttachmentBuilder } = require('discord.js');
+      const att = new AttachmentBuilder(buf, { name: 'grafico_vendas.png' });
+      const embedG = new EmbedBuilder().setColor(config.colors.success).setTitle('📈 Gráfico de Vendas — 7 dias')
+        .setImage('attachment://grafico_vendas.png')
+        .addFields(dias.map(d => ({ name: d.label, value: `${d.vendas} venda(s)\nR$ ${d.receita.toFixed(2)}`, inline: true })))
+        .setTimestamp();
+      return interaction.editReply({ embeds: [embedG], files: [att] });
+    } catch {
+      // Fallback sem canvas: gráfico ASCII
+      const maxVendas = Math.max(...dias.map(d => d.vendas), 1);
+      const linhas = dias.map(d => {
+        const barras = Math.round((d.vendas / maxVendas) * 15);
+        return `\`${d.label}\` ${'█'.repeat(barras)}${'░'.repeat(15-barras)} **${d.vendas}** venda(s) • R$ ${d.receita.toFixed(2)}`;
+      });
+      const embedG = new EmbedBuilder().setColor(config.colors.success).setTitle('📈 Vendas — Últimos 7 Dias')
+        .setDescription(linhas.join('\n')).setTimestamp();
+      return interaction.editReply({ embeds: [embedG] });
+    }
   }
 
   if (id === 'pa_exportar_csv') {
@@ -378,7 +460,7 @@ async function handlePainelAdmin(interaction, client) {
     return interaction.editReply({ content: `✅ ${pedidos.length} pedido(s) exportado(s).`, files: [att] });
   }
 
-  // ─── CARRINHO ──────────────────────────────────────────────────────────────
+  // ─── CARRINHO ──────────────────────────────────────────────────────────────  // ─── CARRINHO ──────────────────────────────────────────────────────────────
 
   if (id === 'pa_criar_carrinho') {
     if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja.', ephemeral: true });
@@ -860,6 +942,28 @@ async function handlePainelAdmin(interaction, client) {
     return interaction.editReply({ embeds: [embed] });
   }
 
+  // ─── Buscar pedido por ID ─────────────────────────────────────────────────
+  if (id === 'pa_buscar_pedido') {
+    if (!isStaff(interaction.member)) return interaction.reply({ content: '❌ Sem permissão.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_buscar_pedido').setTitle('🔍 Buscar Pedido');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('pedido_id').setLabel('ID do Pedido (primeiros 8 chars)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: A1B2C3D4')),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ─── Editar preço de plano ────────────────────────────────────────────────
+  if (id === 'pa_editar_plano') {
+    if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_editar_plano').setTitle('✏️ Editar Plano');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('variante_id').setLabel('ID da Variante (primeiros 8 chars)').setStyle(TextInputStyle.Short).setRequired(true)),
+      mRow(new TextInputBuilder().setCustomId('nome').setLabel('Novo nome (vazio = manter)').setStyle(TextInputStyle.Short).setRequired(false)),
+      mRow(new TextInputBuilder().setCustomId('preco').setLabel('Novo preço R$ (vazio = manter)').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Ex: 29.90')),
+    );
+    return interaction.showModal(modal);
+  }
+
   // ─── Blacklist por CPF ───────────────────────────────────────────────────
   if (id === 'pa_blacklist_cpf') {
     if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
@@ -1180,14 +1284,22 @@ async function handlePainelAdminModals(interaction, client) {
     const u = db.prepare('SELECT * FROM usuarios WHERE discord_id=?').get(busca);
     if (!u) return interaction.editReply({ content: `❌ ID \`${busca}\` não encontrado.` });
     const pedidos = db.prepare("SELECT COUNT(*) as c FROM pedidos WHERE usuario_id=? AND status IN ('pago','entregue')").get(u.discord_id);
+    // Últimos 3 pedidos
+    const ultimosPedidos = db.prepare("SELECT p.*, pr.nome AS pnome FROM pedidos p LEFT JOIN produtos pr ON p.produto_id=pr.id WHERE p.usuario_id=? ORDER BY p.criado_em DESC LIMIT 3").all(u.discord_id);
+    const statusE = { pendente:'⏳', pago:'✅', entregue:'📦', cancelado:'❌' };
+    const pedidosLabel = ultimosPedidos.length
+      ? ultimosPedidos.map(p => `${statusE[p.status]||'?'} ${(p.pnome||'?').slice(0,20)} — R$ ${Number(p.valor_total).toFixed(2)} \`${p.id.slice(0,8)}\``).join('\n')
+      : 'Nenhum pedido';
+
     const embed = new EmbedBuilder().setColor(config.colors.info).setTitle(`👤 ${u.nome||'?'}`).addFields(
-      { name:'🆔 ID',        value: u.discord_id,                                inline: true },
-      { name:'💵 Saldo',     value: `R$ ${(u.saldo||0).toFixed(2)}`,             inline: true },
-      { name:'🪙 Coins',     value: String(u.coins||0),                          inline: true },
-      { name:'⭐ Pontos',    value: String(u.pontos||0),                         inline: true },
-      { name:'🛒 Compras',   value: String(pedidos.c),                           inline: true },
-      { name:'💸 Gasto',     value: `R$ ${(u.total_gasto||0).toFixed(2)}`,      inline: true },
-      { name:'🚫 Bloqueado', value: u.bloqueado ? `Sim — ${u.motivo_bloquio}` : 'Não', inline: false },
+      { name:'🆔 ID',         value: u.discord_id,                                inline: true },
+      { name:'💵 Saldo',      value: `R$ ${(u.saldo||0).toFixed(2)}`,             inline: true },
+      { name:'🪙 Coins',      value: String(u.coins||0),                          inline: true },
+      { name:'⭐ Pontos',     value: String(u.pontos||0),                         inline: true },
+      { name:'🛒 Compras',    value: String(pedidos.c),                           inline: true },
+      { name:'💸 Gasto',      value: `R$ ${(u.total_gasto||0).toFixed(2)}`,      inline: true },
+      { name:'🚫 Bloqueado',  value: u.bloqueado ? `Sim — ${u.motivo_bloquio}` : 'Não', inline: false },
+      { name:'📋 Últimos Pedidos', value: pedidosLabel,                           inline: false },
     ).setTimestamp();
 
     const rowAcoes = new ActionRowBuilder().addComponents(
@@ -1405,6 +1517,47 @@ async function handlePainelAdminModals(interaction, client) {
     const imagem   = interaction.fields.getTextInputValue('imagem').trim();
     const { enviarAnuncio } = require('./anuncios');
     return enviarAnuncio(interaction, { titulo, mensagem, imagemUrl: imagem||null });
+  }
+
+  if (id === 'pam_buscar_pedido') {
+    await interaction.deferReply({ ephemeral: true });
+    const busca  = interaction.fields.getTextInputValue('pedido_id').trim().toUpperCase();
+    const pedido = db.prepare("SELECT p.*, u.nome AS nome_usuario, pr.nome AS nome_produto FROM pedidos p LEFT JOIN usuarios u ON p.usuario_id=u.discord_id LEFT JOIN produtos pr ON p.produto_id=pr.id WHERE UPPER(SUBSTR(p.id,1,8))=?").get(busca);
+    if (!pedido) return interaction.editReply({ content: `❌ Pedido \`${busca}\` não encontrado.` });
+    const statusEmoji = { pendente:'⏳', pago:'✅', entregue:'📦', cancelado:'❌', reembolsado:'↩️' };
+    const embed = new EmbedBuilder().setColor(config.colors.info).setTitle(`🔍 Pedido ${busca}`)
+      .addFields(
+        { name: '👤 Cliente',   value: `<@${pedido.usuario_id}> (${pedido.nome_usuario || '?'})`, inline: false },
+        { name: '📦 Produto',   value: pedido.nome_produto || pedido.produto_id.slice(0,8),         inline: true },
+        { name: '💵 Valor',     value: `R$ ${Number(pedido.valor_total).toFixed(2)}`,               inline: true },
+        { name: '📊 Status',    value: `${statusEmoji[pedido.status]||'?'} ${pedido.status}`,       inline: true },
+        { name: '🎟️ Cupom',    value: pedido.cupom_usado || '—',                                   inline: true },
+        { name: '📅 Criado em', value: pedido.criado_em ? `<t:${pedido.criado_em}:f>` : '—',       inline: true },
+      ).setTimestamp();
+    const rowAcoes = new ActionRowBuilder().addComponents(
+      btn(`ticket_aceitar_sem_pag_${pedido.id}`, '✅ Liberar', ButtonStyle.Success),
+      btn(`pa_bloquear_${pedido.usuario_id}`,    '🚫 Bloquear', ButtonStyle.Danger),
+    );
+    return interaction.editReply({ embeds: [embed], components: [rowAcoes] });
+  }
+
+  if (id === 'pam_editar_plano') {
+    await interaction.deferReply({ ephemeral: true });
+    const busca = interaction.fields.getTextInputValue('variante_id').trim();
+    const novoNome  = interaction.fields.getTextInputValue('nome').trim();
+    const novoPreco = interaction.fields.getTextInputValue('preco').trim().replace(',', '.');
+    const variante  = db.prepare("SELECT * FROM variantes_produto WHERE UPPER(SUBSTR(id,1,8))=UPPER(?) OR id LIKE ?").get(busca, `${busca}%`);
+    if (!variante) return interaction.editReply({ content: `❌ Variante \`${busca}\` não encontrada.` });
+    if (novoNome)  db.prepare('UPDATE variantes_produto SET nome=? WHERE id=?').run(novoNome, variante.id);
+    if (novoPreco) {
+      const p = parseFloat(novoPreco);
+      if (!isNaN(p) && p >= 0) db.prepare('UPDATE variantes_produto SET preco=? WHERE id=?').run(p, variante.id);
+    }
+    const { atualizarPainelProduto } = require('./painelProduto');
+    const paineis = db.prepare('SELECT * FROM paineis_canal WHERE produto_id=? AND ativo=1').all(variante.produto_id);
+    for (const p of paineis) await atualizarPainelProduto(interaction.guild, p.id).catch(() => {});
+    const atualizado = db.prepare('SELECT * FROM variantes_produto WHERE id=?').get(variante.id);
+    return interaction.editReply({ content: `✅ Plano atualizado!\n**${atualizado.nome}** — R$ ${Number(atualizado.preco).toFixed(2)}` });
   }
 
   if (id === 'pam_blacklist_cpf') {

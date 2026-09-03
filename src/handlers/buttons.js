@@ -161,6 +161,25 @@ module.exports = async (interaction, client) => {
   // ── Loja ────────────────────────────────────────────────────────────────────
   if (id === 'loja_abrir') return mostrarLoja(interaction);
   if (id === 'loja_voltar') return mostrarLoja(interaction);
+
+  // ── Recompra com 1 clique ─────────────────────────────────────────────────────
+  if (id.startsWith('recomprar_')) {
+    const produtoId = id.replace('recomprar_', '');
+    return iniciarCompra(interaction, produtoId);
+  }
+
+  // ── Notificar quando voltar estoque ──────────────────────────────────────────
+  if (id.startsWith('notif_estoque_')) {
+    const varianteId = id.replace('notif_estoque_', '');
+    const { db } = require('../database/database');
+    const { v4: uuidv4 } = require('uuid');
+    try {
+      db.prepare('INSERT OR IGNORE INTO notif_estoque (id,usuario_id,variante_id) VALUES (?,?,?)').run(uuidv4(), interaction.user.id, varianteId);
+      return interaction.reply({ content: '🔔 Você será notificado no privado quando o estoque voltar!', ephemeral: true });
+    } catch {
+      return interaction.reply({ content: '⚠️ Você já está na lista de notificações.', ephemeral: true });
+    }
+  }
   if (id.startsWith('loja_pagina_')) {
     const pagina = parseInt(id.replace('loja_pagina_', ''));
     const { mostrarLoja } = require('../systems/loja');
@@ -293,6 +312,37 @@ module.exports = async (interaction, client) => {
     }
     if (pedido.status !== 'pendente') return interaction.reply({ content: '⚠️ Este pedido não pode ser cancelado.', ephemeral: true });
 
+    // Confirmação antes de cancelar
+    const produto = Produtos.get(pedido.produto_id);
+    const rowConf = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`conf_cancelar_${pedidoId}`).setLabel('✅ Sim, cancelar').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`nao_cancelar_${pedidoId}`).setLabel('❌ Não, voltar').setStyle(ButtonStyle.Secondary),
+    );
+    return interaction.reply({
+      embeds: [new EmbedBuilder()
+        .setColor(config.colors.warning)
+        .setTitle('⚠️ Confirmar Cancelamento')
+        .setDescription([
+          `> Tem certeza que deseja cancelar este pedido?`,
+          `> Esta ação não pode ser desfeita.`,
+        ].join('\n'))
+        .addFields(
+          { name: '📦 Produto', value: produto?.nome || '—', inline: true },
+          { name: '💵 Valor',   value: `R$ ${Number(pedido.valor_total).toFixed(2)}`, inline: true },
+        )
+        .setTimestamp()],
+      components: [rowConf],
+      ephemeral: true,
+    });
+  }
+
+  // ── Confirmar cancelamento ────────────────────────────────────────────────────
+  if (id.startsWith('conf_cancelar_')) {
+    const pedidoId = id.replace('conf_cancelar_', '');
+    const pedido = Pedidos.get(pedidoId);
+    if (!pedido || pedido.status !== 'pendente') return interaction.reply({ content: '⚠️ Pedido não pode mais ser cancelado.', ephemeral: true });
+    if (pedido.usuario_id !== interaction.user.id && !isStaff(interaction.member)) return interaction.reply({ content: '❌ Sem permissão.', ephemeral: true });
+
     Pedidos.atualizar(pedidoId, {
       status: 'cancelado',
       cancelado_por: interaction.user.id,
@@ -302,35 +352,25 @@ module.exports = async (interaction, client) => {
 
     // Fechar o ticket se existir
     if (pedido.ticket_id) {
-      const { fecharTicket } = require('../systems/tickets');
       const { Tickets } = require('../database/database');
       const ticket = Tickets.get(pedido.ticket_id);
       if (ticket && ticket.status === 'aberto') {
-        // Simular um interaction de fechamento via canal
         const canalTicket = interaction.guild?.channels.cache.get(pedido.ticket_id);
         if (canalTicket) {
           await canalTicket.send({
-            embeds: [new (require('discord.js').EmbedBuilder)()
-              .setColor(0x2C2F33)
-              .setTitle('🔒 Pedido Cancelado')
-              .setDescription(`Pedido cancelado por <@${interaction.user.id}>.\nEste ticket será encerrado.`)
-              .setTimestamp()],
-          });
-          // Atualizar banco e deletar canal
-          Tickets.atualizar(pedido.ticket_id, {
-            status: 'fechado',
-            fechado_por: interaction.user.id,
-            motivo: 'Pedido cancelado',
-            fechado_em: Math.floor(Date.now() / 1000),
-          });
+            embeds: [new EmbedBuilder().setColor(config.colors.error).setTitle('❌ Pedido Cancelado').setDescription('O pedido foi cancelado pelo comprador.').setTimestamp()],
+          }).catch(() => {});
           setTimeout(() => canalTicket.delete().catch(() => {}), 5000);
         }
+        Tickets.atualizar(pedido.ticket_id, { status: 'fechado', fechado_por: interaction.user.id, motivo: 'Cancelado', fechado_em: Math.floor(Date.now()/1000) });
       }
     }
-
-    return interaction.reply({ content: '✅ Pedido cancelado.', ephemeral: true });
+    return interaction.update({ content: '✅ Pedido cancelado com sucesso.', embeds: [], components: [] });
   }
 
+  if (id.startsWith('nao_cancelar_')) {
+    return interaction.update({ content: '✅ Cancelamento abortado. Seu pedido continua ativo.', embeds: [], components: [] });
+  }
   // ── Confirmar entrega → fecha ticket ─────────────────────────────────────────
   if (id.startsWith('confirmar_entrega_')) {
     const pedidoId = id.replace('confirmar_entrega_', '');

@@ -337,16 +337,34 @@ async function iniciarCompraVariante(interaction, varianteId, client, cupomCodig
   const produto = Produtos.get(variante.produto_id);
   if (!produto || !produto.ativo) return interaction.editReply({ content: '❌ Produto indisponível.' });
 
+  // Bloquear pedido duplicado — mesmo produto pendente ou pago nos últimos 10 min
+  const pedidoDup = db.prepare("SELECT id FROM pedidos WHERE usuario_id=? AND produto_id=? AND status='pendente' AND criado_em > ?").get(
+    interaction.user.id, produto.id, Math.floor(Date.now()/1000) - 600
+  );
+  if (pedidoDup) {
+    return interaction.editReply({ content: `⚠️ Você já tem um pedido pendente deste produto.\nID: \`${pedidoDup.id.slice(0,8).toUpperCase()}\`\nFinalize ou cancele o pedido anterior antes de comprar novamente.` });
+  }
+
   // Verificar estoque — sem estoque, não abre ticket
   const digital = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(varianteId);
   const qtdEstoque = Number(digital?.c || 0);
   if (qtdEstoque === 0) {
+    const rowNotif = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`notif_estoque_${varianteId}`)
+        .setLabel('🔔 Avisar quando voltar')
+        .setStyle(ButtonStyle.Secondary),
+    );
     return interaction.editReply({
       embeds: [new EmbedBuilder()
         .setColor(config.colors.error)
         .setTitle('❌ Sem Estoque')
-        .setDescription(`O plano **${variante.nome}** está sem estoque no momento.\nNovos itens serão adicionados em breve.`)
+        .setDescription([
+          `> O plano **${variante.nome}** está sem estoque no momento.`,
+          `> Clique em **🔔 Avisar quando voltar** para receber uma notificação no privado quando o estoque for reposto.`,
+        ].join('\n'))
         .setTimestamp()],
+      components: [rowNotif],
     });
   }
 

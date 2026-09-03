@@ -69,7 +69,7 @@ module.exports = async (interaction, client) => {
 
     const rows = pendentes.slice(0, 3).map(r =>
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`painel_apr_reimb_${r.id}`).setLabel(`✅ Aprovar ${r.id.slice(0,6)}`).setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`painel_apr_reimb_${r.id}`).setLabel(`✅ Aprovar ${r.id.slice(0,6)}`).setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId(`painel_rej_reimb_${r.id}`).setLabel(`❌ Rejeitar ${r.id.slice(0,6)}`).setStyle(ButtonStyle.Danger),
       )
     );

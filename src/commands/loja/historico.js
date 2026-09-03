@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { db, Usuarios } = require('../../database/database');
 const config = require('../../config');
 const moment = require('moment-timezone');
@@ -87,7 +87,19 @@ module.exports = {
           inline: false,
         });
       }
-      return interaction.editReply({ embeds: [embed] });
+
+      // Botão de recompra para os 3 mais recentes entregues
+      const entregues = rows.filter(p => p.status === 'entregue').slice(0, 3);
+      const rowsRecompra = entregues.map(p =>
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`recomprar_${p.produto_id}`)
+            .setLabel(`🔄 Recomprar: ${(p.produto_nome || 'Produto').slice(0, 25)}`)
+            .setStyle(ButtonStyle.Primary),
+        )
+      );
+
+      return interaction.editReply({ embeds: [embed], components: rowsRecompra });
     }
 
     // ── CAIXAS ────────────────────────────────────────────────────────────
