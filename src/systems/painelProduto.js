@@ -332,38 +332,24 @@ function montarComponentes(variantes, painelId) {
   const produto   = produtoId ? db.prepare('SELECT nome, tipo FROM produtos WHERE id=?').get(produtoId) : null;
   const isCoins   = produto?.nome?.toLowerCase().includes('coin') || produto?.tipo === 'coins';
 
-  // ≤5 variantes → botões (suportam disabled por botão)
-  if (variantes.length <= 5) {
-    const rows = [];
-    const rowAtual = new ActionRowBuilder();
-    for (const v of variantes) {
-      const temEstoque = isCoins || (db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id)?.c || 0) > 0;
-      const preco = `R$ ${Number(v.preco).toFixed(2)}`;
-      const nome  = sanitizar(v.nome, 50);
-      const label = `${nome} — ${preco}`.slice(0, 80);
-      rowAtual.addComponents(
-        new ButtonBuilder()
-          .setCustomId(`painel_comprar_var_${v.id}`)
-          .setLabel(temEstoque ? label : `❌ ${label}`.slice(0, 80))
-          .setStyle(temEstoque ? ButtonStyle.Success : ButtonStyle.Secondary)
-          .setDisabled(!temEstoque),
-      );
-    }
-    rows.push(rowAtual);
-    return rows;
-  }
-
-  // >5 variantes → SelectMenu via JSON raw (evita validação shapeshift com chars especiais)
   const options = variantes.slice(0, 25).map(v => {
     const temEstoque = isCoins || (db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id)?.c || 0) > 0;
     const preco = `R$ ${Number(v.preco).toFixed(2)}`;
     const nome  = sanitizar(v.nome, 90 - preco.length) || 'Plano';
     const label = `${temEstoque ? '' : '❌ '}${nome} • ${preco}`.slice(0, 100);
-    const desc  = sanitizar(v.descricao || (temEstoque ? 'Disponivel' : 'Sem estoque'), 100);
+    const desc  = sanitizar(v.descricao || (isCoins ? 'Entrega automatica' : (temEstoque ? 'Disponivel' : 'Sem estoque')), 100);
     return { label, description: desc, value: v.id };
   });
 
-  return [{ type: 1, components: [{ type: 3, custom_id: `painel_selecionar_${painelId}`, placeholder: 'Selecione um plano', options, min_values: 1, max_values: 1 }] }];
+  // JSON raw para evitar validação shapeshift com caracteres Unicode especiais
+  return [{ type: 1, components: [{
+    type: 3,
+    custom_id: `painel_selecionar_${painelId}`,
+    placeholder: 'Selecione um plano',
+    options,
+    min_values: 1,
+    max_values: 1,
+  }]}];
 }
 
 // ─── Atualizar painel após mudança de estoque ─────────────────────────────────
