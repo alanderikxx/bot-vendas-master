@@ -77,6 +77,32 @@ module.exports = async (interaction, client) => {
     return handlePainelAdmin(interaction, client);
   }
 
+  // ── Submenus de plano (ap_*), estoque (ae_*), cupom (cu_*) ───────────────
+  if (id.startsWith('ap_') || id.startsWith('ae_') || id.startsWith('cu_')) {
+    const sub = require('../systems/adminSubmenus');
+    // Plano
+    if (id === 'ap_produto')  return sub.planoModalProduto(interaction);
+    if (id === 'ap_dados')    return sub.planoModalDados(interaction);
+    if (id === 'ap_salvar')   return sub.planoSalvar(interaction);
+    if (id === 'ap_cancelar') return sub.planoCancelar(interaction);
+    // Estoque
+    if (id === 'ae_variante') return sub.estoqueModalVariante(interaction);
+    if (id === 'ae_slot1')    return sub.estoqueModalSlot(interaction, 1);
+    if (id === 'ae_slot2')    return sub.estoqueModalSlot(interaction, 2);
+    if (id === 'ae_slot3')    return sub.estoqueModalSlot(interaction, 3);
+    if (id === 'ae_slot4')    return sub.estoqueModalSlot(interaction, 4);
+    if (id === 'ae_salvar')   return sub.estoqueSalvar(interaction);
+    if (id === 'ae_cancelar') return sub.estoqueCancelar(interaction);
+    // Cupom
+    if (id === 'cu_codigo')   return sub.cupomModal(interaction, 'codigo');
+    if (id === 'cu_valor')    return sub.cupomModal(interaction, 'valor');
+    if (id === 'cu_validade') return sub.cupomModal(interaction, 'validade');
+    if (id === 'cu_limite')   return sub.cupomModal(interaction, 'limite');
+    if (id === 'cu_lojas')    return sub.cupomModal(interaction, 'lojas');
+    if (id === 'cu_salvar')   return sub.cupomSalvar(interaction);
+    if (id === 'cu_cancelar') return sub.cupomCancelar(interaction);
+  }
+
   // ── Resgate de códigos de coins ───────────────────────────────────────────
   if (id === 'resgatar_codigo_coins') {
     const modal = new (require('discord.js').ModalBuilder)()

@@ -19,6 +19,16 @@ module.exports = async (interaction, client) => {
     });
   }
 
+  // ── Selects dos submenus admin ────────────────────────────────────────────
+  if (id === 'ap_select_produto') {
+    const sub = require('../systems/adminSubmenus');
+    return sub.planoSelectProduto(interaction);
+  }
+  if (id === 'ae_select_variante') {
+    const sub = require('../systems/adminSubmenus');
+    return sub.estoqueSelectVariante(interaction);
+  }
+
   // ── Selecionar carrinho para editar ──────────────────────────────────────
   if (id === 'pa_select_editar_carrinho') {
     const { handlePainelAdmin } = require('../systems/painelAdmin');

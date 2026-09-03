@@ -26,6 +26,25 @@ module.exports = async (interaction, client) => {
     return;
   }
 
+  // ── Modais dos submenus admin (apm_*, aem_*, cum_*) ──────────────────────
+  if (id.startsWith('apm_') || id.startsWith('aem_') || id.startsWith('cum_')) {
+    const sub = require('../systems/adminSubmenus');
+    // Plano
+    if (id === 'apm_dados') return sub.planoProcessarDados(interaction);
+    // Estoque
+    if (id === 'aem_slot1') return sub.estoqueProcessarSlot(interaction, 1);
+    if (id === 'aem_slot2') return sub.estoqueProcessarSlot(interaction, 2);
+    if (id === 'aem_slot3') return sub.estoqueProcessarSlot(interaction, 3);
+    if (id === 'aem_slot4') return sub.estoqueProcessarSlot(interaction, 4);
+    // Cupom
+    if (id === 'cum_codigo')   return sub.cupomProcessar(interaction, 'codigo');
+    if (id === 'cum_valor')    return sub.cupomProcessar(interaction, 'valor');
+    if (id === 'cum_validade') return sub.cupomProcessar(interaction, 'validade');
+    if (id === 'cum_limite')   return sub.cupomProcessar(interaction, 'limite');
+    if (id === 'cum_lojas')    return sub.cupomProcessar(interaction, 'lojas');
+    return;
+  }
+
   // ── Modal resgate código de coins ─────────────────────────────────────────
   if (id === 'modal_resgatar_codigo') {
     const codigo = interaction.fields.getTextInputValue('codigo');

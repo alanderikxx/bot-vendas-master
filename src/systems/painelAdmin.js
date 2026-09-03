@@ -411,24 +411,14 @@ async function handlePainelAdmin(interaction, client) {
 
   if (id === 'pa_add_plano') {
     if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja.', ephemeral: true });
-    const modal = new ModalBuilder().setCustomId('pam_add_plano').setTitle('➕ Adicionar Plano');
-    modal.addComponents(
-      mRow(new TextInputBuilder().setCustomId('produto_id').setLabel('ID do Produto (primeiros 8 dígitos)').setStyle(TextInputStyle.Short).setRequired(true)),
-      mRow(new TextInputBuilder().setCustomId('nome').setLabel('Nome do Plano').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: Mensal, Trimestral, Vitalício')),
-      mRow(new TextInputBuilder().setCustomId('preco').setLabel('Preço (R$)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 29.90')),
-      mRow(new TextInputBuilder().setCustomId('descricao').setLabel('Descrição do plano (opcional)').setStyle(TextInputStyle.Short).setRequired(false)),
-    );
-    return interaction.showModal(modal);
+    const sub = require('./adminSubmenus');
+    return sub.abrirPlano(interaction);
   }
 
   if (id === 'pa_add_estoque') {
     if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja.', ephemeral: true });
-    const modal = new ModalBuilder().setCustomId('pam_add_estoque').setTitle('📥 Adicionar Estoque Digital');
-    modal.addComponents(
-      mRow(new TextInputBuilder().setCustomId('variante_id').setLabel('ID da Variante (primeiros 8 dígitos)').setStyle(TextInputStyle.Short).setRequired(true)),
-      mRow(new TextInputBuilder().setCustomId('conteudo').setLabel('Itens — 1 por linha = 1 produto').setStyle(TextInputStyle.Paragraph).setRequired(true).setPlaceholder('login1:senha1\nlogin2:senha2\nkey1\nkey2')),
-    );
-    return interaction.showModal(modal);
+    const sub = require('./adminSubmenus');
+    return sub.abrirEstoque(interaction);
   }
 
   if (id === 'pa_remover_plano') {
@@ -501,15 +491,8 @@ async function handlePainelAdmin(interaction, client) {
 
   if (id === 'pa_criar_cupom') {
     if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja.', ephemeral: true });
-    const modal = new ModalBuilder().setCustomId('pam_criar_cupom').setTitle('🎟️ Criar Cupom');
-    modal.addComponents(
-      mRow(new TextInputBuilder().setCustomId('codigo').setLabel('Código (vazio = automático)').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('PROMO10')),
-      mRow(new TextInputBuilder().setCustomId('valor').setLabel('Desconto em % (ex: 10 = 10%)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('10')),
-      mRow(new TextInputBuilder().setCustomId('usos_por_usuario').setLabel('Limite de usos por usuário').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('1')),
-      mRow(new TextInputBuilder().setCustomId('validade').setLabel('Validade em dias').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('30')),
-      mRow(new TextInputBuilder().setCustomId('lojas').setLabel('IDs dos produtos (vazio = todas as lojas)').setStyle(TextInputStyle.Paragraph).setRequired(false).setPlaceholder('IDs separados por vírgula (ex: a1b2c3d4, e5f6g7h8)')),
-    );
-    return interaction.showModal(modal);
+    const sub = require('./adminSubmenus');
+    return sub.abrirCupom(interaction);
   }
 
   if (id === 'pa_listar_cupons') {
