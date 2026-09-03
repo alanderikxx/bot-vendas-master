@@ -94,6 +94,63 @@ module.exports = async (interaction, client) => {
     });
   }
 
+  // ── Modal Alterar Quantidade ──────────────────────────────────────────────
+  else if (id.startsWith('modal_alterar_qtd_')) {
+    await interaction.deferReply({ ephemeral: true });
+    const pedidoId = id.replace('modal_alterar_qtd_', '');
+    const qtdStr   = interaction.fields.getTextInputValue('quantidade').trim();
+    const qtd      = parseInt(qtdStr);
+
+    if (isNaN(qtd) || qtd < 1) {
+      return interaction.editReply({ content: '❌ Quantidade inválida. Use um número maior que 0.' });
+    }
+
+    const { Pedidos, Produtos, db } = require('../database/database');
+    const pedido  = Pedidos.get(pedidoId);
+    if (!pedido) return interaction.editReply({ content: '❌ Pedido não encontrado.' });
+    if (pedido.usuario_id !== interaction.user.id) return interaction.editReply({ content: '❌ Este pedido não é seu.' });
+    if (pedido.status !== 'pendente') return interaction.editReply({ content: '⚠️ Pedido não está mais pendente.' });
+
+    const produto    = Produtos.get(pedido.produto_id);
+    const valorUnit  = pedido.valor_unit || (produto?.preco_promo || produto?.preco) || 0;
+    const novoTotal  = Number(valorUnit) * qtd;
+
+    db.prepare('UPDATE pedidos SET quantidade=?, valor_total=? WHERE id=?').run(qtd, novoTotal, pedidoId);
+
+    // Verificar se pode pagar com coins agora
+    const coins      = db.prepare('SELECT coins FROM usuarios WHERE discord_id=?').get(interaction.user.id)?.coins || 0;
+    const podeCoins  = (coins * 0.01) >= novoTotal;
+    const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+
+    // Atualizar embed no canal do ticket
+    const rowPag = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`gerar_pix_${pedidoId}`).setLabel('💠 Pagar via PIX').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`pagar_coins_${pedidoId}`).setLabel('🪙 Pagar com Coins').setStyle(ButtonStyle.Primary).setDisabled(!podeCoins),
+      new ButtonBuilder().setCustomId(`alterar_qtd_${pedidoId}`).setLabel('🔢 Quantidade').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`cancelar_pedido_${pedidoId}`).setLabel('❌ Cancelar').setStyle(ButtonStyle.Danger),
+    );
+
+    await interaction.editReply({
+      embeds: [new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('✅ Quantidade Atualizada')
+        .addFields(
+          { name: '📦 Produto',    value: produto?.nome || '—',             inline: true },
+          { name: '🔢 Quantidade', value: `${qtd}x`,                         inline: true },
+          { name: '💵 Novo Total', value: `R$ ${novoTotal.toFixed(2)}`,      inline: true },
+        )
+        .setTimestamp()],
+    });
+
+    // Enviar nova row no ticket para atualizar os botões
+    if (interaction.channel) {
+      await interaction.channel.send({
+        content: `<@${interaction.user.id}> Quantidade atualizada para **${qtd}x** — Novo total: **R$ ${novoTotal.toFixed(2)}**`,
+        components: [rowPag],
+      }).catch(() => {});
+    }
+  }
+
   // ── Modal de fechar ticket com motivo ─────────────────────────────────────
   else if (id === 'modal_fechar_ticket') {
     const motivo = interaction.fields.getTextInputValue('motivo');

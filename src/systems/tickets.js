@@ -102,47 +102,44 @@ async function abrirTicket(guild, member, tipo = 'compra', dadosExtra = {}) {
     const podeCoins  = dadosExtra.valor ? valorCoins >= Number(dadosExtra.valor) : false;
     const { t, getIdioma, btnIdioma } = require('./i18n');
     const idioma = getIdioma(member.id);
+    const valor  = Number(dadosExtra.valor || 0);
 
     const embedCompra = new EmbedBuilder()
       .setColor(config.colors.primary)
-      .setTitle(`🛒 ${t('ticket_welcome', idioma, member.id).split('\n')[0].replace(`Olá, <@${member.id}>! 👋`, '').trim() || 'Ticket — COMPRA'}`)
-      .setDescription([
-        t('ticket_welcome', idioma, member.id),
-        '',
-        dadosExtra.produto ? `📦 **${t('delivery_product', idioma)}:** ${dadosExtra.produto}` : '',
-        dadosExtra.valor   ? `💵 **${t('delivery_value', idioma)}:** R$ ${Number(dadosExtra.valor).toFixed(2)}` : '',
-        `🆔 **${t('delivery_order', idioma)}:** \`${dadosExtra.pedidoId.slice(0,8).toUpperCase()}\``,
-        `🎫 **Ticket:** \`${ticketId.slice(0,8).toUpperCase()}\``,
-        '',
-        `🪙 **Coins:** ${coins.toLocaleString('pt-BR')} (≈ R$ ${valorCoins.toFixed(2)})`,
-      ].filter(Boolean).join('\n'))
+      .setTitle('🛒 Novo Pedido')
+      .setDescription(`Olá, <@${member.id}>! 👋\nEscolha a forma de pagamento abaixo.`)
+      .addFields(
+        { name: '📦 Produto',  value: dadosExtra.produto || '—',                          inline: true },
+        { name: '💵 Valor',    value: `R$ ${valor.toFixed(2)}`,                           inline: true },
+        { name: '🆔 Pedido',   value: `\`${dadosExtra.pedidoId.slice(0,8).toUpperCase()}\``, inline: true },
+        { name: '🪙 Coins',    value: `${coins.toLocaleString('pt-BR')} (≈ R$ ${valorCoins.toFixed(2)})`, inline: true },
+        { name: '🎫 Ticket',   value: `\`${ticketId.slice(0,8).toUpperCase()}\``,         inline: true },
+        { name: '📊 Status',   value: '⏳ Aguardando pagamento',                          inline: true },
+      )
       .setTimestamp()
-      .setFooter({ text: 'Máximo Store • Sistema de Tickets' });
+      .setFooter({ text: 'Máximo Store • Sistema de Pedidos' });
 
-    // Row 1 — Staff
+    // Row 1 — Pagamento (cliente)
+    const rowPag = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`gerar_pix_${dadosExtra.pedidoId}`).setLabel('💠 Pagar via PIX').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`pagar_coins_${dadosExtra.pedidoId}`).setLabel(`🪙 Pagar com Coins`).setStyle(ButtonStyle.Primary).setDisabled(!podeCoins),
+      new ButtonBuilder().setCustomId(`alterar_qtd_${dadosExtra.pedidoId}`).setLabel('🔢 Quantidade').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`cancelar_pedido_${dadosExtra.pedidoId}`).setLabel('❌ Cancelar').setStyle(ButtonStyle.Danger),
+    );
+
+    // Row 2 — Staff
     const rowStaff = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('ticket_assumir').setLabel('✋ Assumir').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`ticket_aceitar_sem_pag_${dadosExtra.pedidoId}`).setLabel('✅ Liberar').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('ticket_fechar').setLabel('🔒 Fechar').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('ticket_transcript').setLabel('📄 Transcrição').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('ticket_transcript').setLabel('📄 Transcript').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('ticket_banir_fraude').setLabel('🚫 Fraude').setStyle(ButtonStyle.Danger),
-    );
-    // Row 2 — Pagamento com idioma
-    const rowPag = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`gerar_pix_${dadosExtra.pedidoId}`).setLabel(t('ticket_pay_pix', idioma)).setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`comprar_boleto_${dadosExtra.produtoId || ''}`).setLabel(t('ticket_pay_boleto', idioma)).setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`cancelar_pedido_${dadosExtra.pedidoId}`).setLabel(t('ticket_cancel', idioma)).setStyle(ButtonStyle.Danger),
-    );
-    // Row 3 — Coins + Liberar + Idioma
-    const rowAceitar = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`ticket_aceitar_sem_pag_${dadosExtra.pedidoId}`).setLabel(t('ticket_free', idioma)).setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`pagar_coins_${dadosExtra.pedidoId}`).setLabel(t('ticket_pay_coins', idioma)).setStyle(ButtonStyle.Secondary).setDisabled(!podeCoins),
-      btnIdioma(idioma),
     );
 
     await canal.send({
       content:    `<@&${config.roles.suporte}> <@${member.id}>`,
       embeds:     [embedCompra],
-      components: [rowStaff, rowPag, rowAceitar],
+      components: [rowPag, rowStaff],
     });
 
     await log('ticket_aberto', { usuario: member.id, ticketId: ticketId.slice(0,8).toUpperCase(), descricao: `Ticket compra aberto por ${member.user.tag}` });

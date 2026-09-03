@@ -199,6 +199,33 @@ module.exports = async (interaction, client) => {
     }
   }
 
+  // ── Alterar quantidade do pedido ─────────────────────────────────────────────
+  if (id.startsWith('alterar_qtd_')) {
+    const pedidoId = id.replace('alterar_qtd_', '');
+    const pedido   = Pedidos.get(pedidoId);
+    if (!pedido) return interaction.reply({ content: '❌ Pedido não encontrado.', ephemeral: true });
+    if (pedido.usuario_id !== interaction.user.id) return interaction.reply({ content: '❌ Este pedido não é seu.', ephemeral: true });
+    if (pedido.status !== 'pendente') return interaction.reply({ content: '⚠️ Pedido não está mais pendente.', ephemeral: true });
+
+    const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+    const modal = new ModalBuilder()
+      .setCustomId(`modal_alterar_qtd_${pedidoId}`)
+      .setTitle('🔢 Alterar Quantidade');
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('quantidade')
+          .setLabel('Nova quantidade (mínimo 1)')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMinLength(1)
+          .setMaxLength(3)
+          .setPlaceholder('Ex: 2'),
+      ),
+    );
+    return interaction.showModal(modal);
+  }
+
   // ── Cancelar pedido ──────────────────────────────────────────────────────────
   if (id.startsWith('cancelar_pedido_') || id.startsWith('cancelar_pix_')) {
     const pedidoId = id.replace('cancelar_pedido_', '').replace('cancelar_pix_', '');
