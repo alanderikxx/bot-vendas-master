@@ -713,6 +713,12 @@ async function processarCompraBoleto(interaction, produtoId, dadosCliente) {
   await interaction.deferReply({ ephemeral: true });
   const usuario = Usuarios.garantir(interaction.user.id, interaction.user.username);
   if (usuario.bloqueado) return interaction.editReply({ content: '🚫 Conta bloqueada.' });
+  // Verificar CPF na blacklist
+  if (dadosCliente.cpf) {
+    const { verificarCpf } = require('./antiFraude');
+    const cpfCheck = verificarCpf(dadosCliente.cpf);
+    if (cpfCheck.bloqueado) return interaction.editReply({ content: `🚫 ${cpfCheck.mensagem}` });
+  }
   const produto = Produtos.get(produtoId);
   if (!produto || !produto.ativo) return interaction.editReply({ content: '❌ Produto indisponível.' });
   const precoFinal = produto.preco_promo || produto.preco;

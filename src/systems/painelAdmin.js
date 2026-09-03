@@ -175,7 +175,9 @@ function buildUsuariosMenu() {
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_home', '🔙 Voltar', ButtonStyle.Secondary),
+    btn('pa_blacklist_cpf',  '🚫 Blacklist CPF',  ButtonStyle.Danger),
+    btn('pa_ranking',        '🏆 Ranking',        ButtonStyle.Secondary),
+    btn('pa_home',           '🔙 Voltar',         ButtonStyle.Secondary),
   );
 
   return { embed, components: [row1, row2] };
@@ -344,7 +346,36 @@ async function handlePainelAdmin(interaction, client) {
       const r = db.prepare("SELECT COUNT(*) as v, COALESCE(SUM(valor_total),0) as r FROM pedidos WHERE status IN ('pago','entregue') AND pago_em>=?").get(p.inicio);
       embed.addFields({ name: `📅 ${p.nome}`, value: `${r.v} vendas • R$ ${Number(r.r).toFixed(2)}`, inline: true });
     }
-    return interaction.editReply({ embeds: [embed] });
+    // Botão para exportar CSV
+    const { AttachmentBuilder } = require('discord.js');
+    const rowCsv = new ActionRowBuilder().addComponents(
+      btn('pa_exportar_csv', '📥 Exportar CSV', ButtonStyle.Secondary),
+    );
+    return interaction.editReply({ embeds: [embed], components: [rowCsv] });
+  }
+
+  if (id === 'pa_exportar_csv') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const pedidos = db.prepare("SELECT p.*, u.nome AS nome_usuario FROM pedidos p LEFT JOIN usuarios u ON p.usuario_id=u.discord_id WHERE p.status IN ('pago','entregue') ORDER BY p.pago_em DESC LIMIT 1000").all();
+    const linhas = ['ID,Usuário,Produto_ID,Valor,Status,Data_Pagamento,Cupom'];
+    for (const p of pedidos) {
+      const data = p.pago_em ? new Date(p.pago_em * 1000).toLocaleDateString('pt-BR') : '';
+      linhas.push([
+        p.id.slice(0,8),
+        (p.nome_usuario || p.usuario_id).replace(/,/g, ' '),
+        p.produto_id.slice(0,8),
+        Number(p.valor_total).toFixed(2),
+        p.status,
+        data,
+        p.cupom_usado || '',
+      ].join(','));
+    }
+    const csv = linhas.join('\n');
+    const buf = Buffer.from(csv, 'utf-8');
+    const { AttachmentBuilder } = require('discord.js');
+    const att = new AttachmentBuilder(buf, { name: `vendas_${new Date().toISOString().slice(0,10)}.csv` });
+    return interaction.editReply({ content: `✅ ${pedidos.length} pedido(s) exportado(s).`, files: [att] });
   }
 
   // ─── CARRINHO ──────────────────────────────────────────────────────────────
@@ -827,6 +858,18 @@ async function handlePainelAdmin(interaction, client) {
     const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
     top.forEach((u,i) => embed.addFields({ name: `${medals[i]} ${u.nome||'?'}`, value: `R$ ${(u.total_gasto||0).toFixed(2)} • ${u.total_compras||0} compras`, inline: true }));
     return interaction.editReply({ embeds: [embed] });
+  }
+
+  // ─── Blacklist por CPF ───────────────────────────────────────────────────
+  if (id === 'pa_blacklist_cpf') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_blacklist_cpf').setTitle('🚫 Blacklist de CPF');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('acao').setLabel('Ação: bloquear ou desbloquear').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('bloquear').setValue('bloquear')),
+      mRow(new TextInputBuilder().setCustomId('cpf').setLabel('CPF (só números)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('12345678901').setMaxLength(14)),
+      mRow(new TextInputBuilder().setCustomId('motivo').setLabel('Motivo (só para bloquear)').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Chargeback, fraude...')),
+    );
+    return interaction.showModal(modal);
   }
 
   // ─── Publicar cupom no canal ─────────────────────────────────────────────
@@ -1362,6 +1405,23 @@ async function handlePainelAdminModals(interaction, client) {
     const imagem   = interaction.fields.getTextInputValue('imagem').trim();
     const { enviarAnuncio } = require('./anuncios');
     return enviarAnuncio(interaction, { titulo, mensagem, imagemUrl: imagem||null });
+  }
+
+  if (id === 'pam_blacklist_cpf') {
+    await interaction.deferReply({ ephemeral: true });
+    if (!isAdmin(interaction.member)) return interaction.editReply({ content: '❌ Apenas admins.' });
+    const acao   = interaction.fields.getTextInputValue('acao').trim().toLowerCase();
+    const cpf    = interaction.fields.getTextInputValue('cpf').trim().replace(/\D/g, '');
+    const motivo = interaction.fields.getTextInputValue('motivo').trim() || 'Bloqueado pelo admin';
+    if (cpf.length < 11) return interaction.editReply({ content: '❌ CPF inválido (mínimo 11 dígitos).' });
+    const { bloquearCpf, desbloquearCpf, listarCpfsBloqueados } = require('./antiFraude');
+    if (acao.includes('des')) {
+      desbloquearCpf(cpf);
+      return interaction.editReply({ content: `✅ CPF \`${cpf}\` desbloqueado.` });
+    } else {
+      bloquearCpf(cpf, motivo, interaction.user.id);
+      return interaction.editReply({ content: `🚫 CPF \`${cpf}\` bloqueado.\n**Motivo:** ${motivo}` });
+    }
   }
 
   if (id.startsWith('pam_bloquear_')) {

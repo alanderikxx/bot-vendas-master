@@ -364,6 +364,19 @@ module.exports = async (interaction, client) => {
           }).catch(() => {});
           setTimeout(() => canalTicket.delete().catch(() => {}), 5000);
         }
+
+        // Notificar staff no canal de logs
+        try {
+          const { log } = require('../utils/logger');
+          const produto = Produtos.get(pedido.produto_id);
+          await log('pagamento', {
+            usuario:    pedido.usuario_id,
+            pedidoId:   pedido.id,
+            produto:    produto?.nome,
+            valor:      pedido.valor_total,
+            descricao:  `✅ <@${pedido.usuario_id}> confirmou recebimento — ${produto?.nome || 'Produto'} — R$ ${Number(pedido.valor_total).toFixed(2)}`,
+          });
+        } catch {}
       }
     }
     return;

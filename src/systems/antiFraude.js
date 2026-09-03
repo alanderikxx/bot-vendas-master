@@ -15,14 +15,15 @@ function verificar(usuarioId) {
     return { bloqueado: true, mensagem: 'Sua conta foi sinalizada por atividade suspeita. Contate o suporte.' };
   }
 
-  // Verificar cooldown entre compras
+  // Rate limit: 3 tentativas em 10 minutos
   const agora = Math.floor(Date.now() / 1000);
-  const ultima = registro.ultimo;
-  const cooldownSeg = af.cooldownCompra / 1000;
+  const janelaSegundos = 600; // 10 min
+  const maxTentativas  = 3;
 
-  if (agora - ultima < cooldownSeg && registro.tentativas >= af.maxTentativasPagamento) {
-    const restante = Math.ceil(cooldownSeg - (agora - ultima));
-    return { bloqueado: true, mensagem: `Muitas tentativas. Aguarde ${restante}s antes de tentar novamente.` };
+  if ((agora - registro.ultimo) < janelaSegundos && registro.tentativas >= maxTentativas) {
+    const restante = Math.ceil(janelaSegundos - (agora - registro.ultimo));
+    const min = Math.ceil(restante / 60);
+    return { bloqueado: true, mensagem: `⏳ Muitas tentativas. Aguarde ${min} minuto(s) antes de tentar novamente.` };
   }
 
   return { bloqueado: false };
@@ -40,16 +41,16 @@ function registrarTentativa(usuarioId) {
     return;
   }
 
-  const cooldownSeg = af.cooldownCompra / 1000;
-  // Resetar se passou o cooldown
-  if (agora - registro.ultimo > cooldownSeg) {
+  const janelaSegundos = 600; // 10 min
+  // Resetar se passou a janela
+  if (agora - registro.ultimo > janelaSegundos) {
     db.prepare('UPDATE tentativas_pagamento SET tentativas=1, ultimo=? WHERE usuario_id=?').run(agora, usuarioId);
   } else {
     const novasTentativas = registro.tentativas + 1;
     db.prepare('UPDATE tentativas_pagamento SET tentativas=?, ultimo=? WHERE usuario_id=?').run(novasTentativas, agora, usuarioId);
 
-    // Auto-bloquear após limite
-    if (novasTentativas >= af.maxTentativasPagamento * 2) {
+    // Auto-bloquear após 6 tentativas na mesma janela
+    if (novasTentativas >= 6) {
       bloquearPorFraude(usuarioId, 'Excesso de tentativas de pagamento (auto-detecção)');
     }
   }
@@ -93,4 +94,38 @@ function verificarLimitesDia(usuarioId) {
   return { ok: true };
 }
 
-module.exports = { verificar, registrarTentativa, bloquearPorFraude, verificarPedidoDuplicado, verificarLimitesDia };
+/**
+ * Verificar CPF na blacklist
+ */
+function verificarCpf(cpf) {
+  if (!cpf) return { bloqueado: false };
+  const limpo = cpf.replace(/\D/g, '');
+  const r = db.prepare('SELECT * FROM cpf_blacklist WHERE cpf=?').get(limpo);
+  if (r) return { bloqueado: true, mensagem: 'CPF bloqueado. Contate o suporte.' };
+  return { bloqueado: false };
+}
+
+/**
+ * Bloquear CPF
+ */
+function bloquearCpf(cpf, motivo, criadoPor) {
+  const limpo = cpf.replace(/\D/g, '');
+  db.prepare('INSERT OR REPLACE INTO cpf_blacklist (cpf, motivo, criado_por) VALUES (?,?,?)').run(limpo, motivo, criadoPor);
+}
+
+/**
+ * Desbloquear CPF
+ */
+function desbloquearCpf(cpf) {
+  const limpo = cpf.replace(/\D/g, '');
+  db.prepare('DELETE FROM cpf_blacklist WHERE cpf=?').run(limpo);
+}
+
+/**
+ * Listar CPFs bloqueados
+ */
+function listarCpfsBloqueados() {
+  return db.prepare('SELECT * FROM cpf_blacklist ORDER BY criado_em DESC LIMIT 50').all();
+}
+
+module.exports = { verificar, registrarTentativa, bloquearPorFraude, verificarPedidoDuplicado, verificarLimitesDia, verificarCpf, bloquearCpf, desbloquearCpf, listarCpfsBloqueados };

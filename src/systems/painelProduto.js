@@ -429,6 +429,21 @@ function pegarItemVariante(varianteId, usuarioId, pedidoId) {
     .run(usuarioId, pedidoId, item.id);
   const restante = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(varianteId).c;
   db.prepare('UPDATE variantes_produto SET estoque=? WHERE id=?').run(restante, varianteId);
+
+  // Alerta de estoque zerado ou baixo
+  if (restante === 0 || restante <= 2) {
+    try {
+      const { log } = require('../utils/logger');
+      const variante = db.prepare('SELECT * FROM variantes_produto WHERE id=?').get(varianteId);
+      const produto  = variante ? db.prepare('SELECT nome FROM produtos WHERE id=?').get(variante.produto_id) : null;
+      const nivel = restante === 0 ? '🚨 ZERADO' : `⚠️ BAIXO (${restante})`;
+      log('estoque_baixo', {
+        produto:   produto?.nome || '?',
+        descricao: `${nivel} — **${produto?.nome || '?'}** — Plano: **${variante?.nome || '?'}** — ${restante} restante(s)`,
+      }).catch(() => {});
+    } catch {}
+  }
+
   return item.conteudo;
 }
 

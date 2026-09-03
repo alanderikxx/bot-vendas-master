@@ -441,6 +441,16 @@ async function init() {
   try { db.exec('ALTER TABLE cupons ADD COLUMN usos_por_usuario INTEGER DEFAULT 1'); } catch {}
   try { db.exec('ALTER TABLE cupons ADD COLUMN lojas_validas TEXT DEFAULT NULL'); } catch {}
 
+  // Tabela de blacklist por CPF
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS cpf_blacklist (
+      cpf       TEXT PRIMARY KEY,
+      motivo    TEXT,
+      criado_por TEXT,
+      criado_em INTEGER DEFAULT (strftime('%s','now'))
+    )`);
+  } catch {}
+
   // Configurações padrão
   const cfgStmt = db.prepare(`INSERT OR IGNORE INTO configuracoes (chave, valor, tipo, descricao) VALUES (?, ?, ?, ?)`);
   const defaults = [

@@ -110,6 +110,24 @@ client.once('clientReady', async () => {
   // Iniciar tarefas agendadas
   require('./tasks/scheduler')(client);
 
+  // Limpar tickets órfãos no startup
+  try {
+    const guild = client.guilds.cache.first();
+    if (guild) {
+      const { db } = require('./database/database');
+      const ticketsAbertos = db.prepare("SELECT * FROM tickets WHERE status='aberto'").all();
+      let orfaos = 0;
+      for (const t of ticketsAbertos) {
+        const canalExiste = guild.channels.cache.has(t.canal_id);
+        if (!canalExiste) {
+          db.prepare("UPDATE tickets SET status='fechado', motivo='Canal deletado — limpeza startup', fechado_em=strftime('%s','now') WHERE id=?").run(t.id);
+          orfaos++;
+        }
+      }
+      if (orfaos > 0) console.log(`🧹 ${orfaos} ticket(s) órfão(s) limpos no startup.`);
+    }
+  } catch (e) { console.error('[Limpeza Tickets]', e.message); }
+
   // Enviar/atualizar painel admin fixo no canal configurado
   setTimeout(async () => {
     try {

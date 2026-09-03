@@ -250,7 +250,7 @@ module.exports = function iniciarScheduler(client) {
   // Primeira execução imediata, depois a cada 2s
   setTimeout(async () => {
     await atualizarKpiCoins();
-    setInterval(atualizarKpiCoins, 2000);
+    setInterval(atualizarKpiCoins, 8000);
   }, 5000);
 };
 
