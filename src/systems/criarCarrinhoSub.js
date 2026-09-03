@@ -43,25 +43,64 @@ function limparSessao(userId) { sessoes.delete(userId); }
 
 // ─── Montar embed de status ───────────────────────────────────────────────────
 function buildStatusEmbed(s) {
-  const tick = v => v ? '✅' : '⬜';
-  const modo = s.modo === 'editar' ? '✏️ Editar' : '➕ Criar';
+  const ok  = '🟢';
+  const no  = '🔴';
+  const modo = s.modo === 'editar' ? '✏️ Editar Carrinho' : '🛒 Criar Carrinho';
 
-  return new EmbedBuilder()
-    .setColor(s.cor ? parseInt(s.cor, 16) || 0xFF6B6B : 0xFF6B6B)
-    .setTitle(`🛒 ${modo} Carrinho`)
-    .setDescription([
-      `${tick(s.canalId)}  **Canal:** ${s.canalId ? `<#${s.canalId}>` : '*não definido*'}`,
-      `${tick(s.titulo)}  **Nome do Produto:** ${s.titulo || '*não definido*'}`,
-      `${tick(s.descricao)}  **Descrição:** ${s.descricao ? s.descricao.slice(0, 60) + (s.descricao.length > 60 ? '…' : '') : '*não definida*'}`,
-      `${tick(s.imagemUrl)}  **Imagem:** ${s.imagemUrl ? '✅ URL configurada' : '*não definida*'}`,
-      `${tick(s.cor)}  **Cor:** \`#${s.cor || 'FF6B6B'}\``,
-      '',
+  // Barra de progresso
+  const campos = [s.canalId, s.titulo, s.descricao, s.imagemUrl];
+  const preenchidos = campos.filter(Boolean).length;
+  const barra = '█'.repeat(preenchidos) + '░'.repeat(campos.length - preenchidos);
+  const pct   = Math.round((preenchidos / campos.length) * 100);
+
+  const cor = s.cor ? parseInt(s.cor, 16) || 0xFF6B6B : 0xFF6B6B;
+
+  const embed = new EmbedBuilder()
+    .setColor(cor)
+    .setTitle(modo)
+    .addFields(
+      {
+        name: `${s.canalId ? ok : no} Canal`,
+        value: s.canalId ? `<#${s.canalId}>` : '`não definido`',
+        inline: true,
+      },
+      {
+        name: `${s.titulo ? ok : no} Nome do Produto`,
+        value: s.titulo ? `\`${s.titulo.slice(0, 30)}\`` : '`não definido`',
+        inline: true,
+      },
+      {
+        name: `${s.cor ? ok : no} Cor`,
+        value: `\`#${s.cor || 'FF6B6B'}\``,
+        inline: true,
+      },
+      {
+        name: `${s.descricao ? ok : no} Descrição`,
+        value: s.descricao ? s.descricao.slice(0, 60) + (s.descricao.length > 60 ? '…' : '') : '`não definida`',
+        inline: true,
+      },
+      {
+        name: `${s.imagemUrl ? ok : no} Imagem`,
+        value: s.imagemUrl ? '`URL configurada ✅`' : '`não definida`',
+        inline: true,
+      },
+      {
+        name: '📊 Progresso',
+        value: `\`${barra}\` ${pct}%`,
+        inline: true,
+      },
+    )
+    .setDescription(
       s.modo === 'criar'
-        ? '> Preencha os campos acima e clique em **🚀 Publicar** para criar o carrinho no canal.'
-        : '> Edite os campos desejados e clique em **💾 Salvar** para atualizar.',
-    ].join('\n'))
+        ? '> Preencha os campos e clique em **🚀 Publicar** quando terminar.'
+        : '> Edite os campos desejados e clique em **💾 Salvar**.',
+    )
     .setTimestamp()
-    .setFooter({ text: 'Máximo Store • Preencha todos os campos obrigatórios (Canal e Nome)' });
+    .setFooter({ text: `Máximo Store • Canal e Nome são obrigatórios para publicar` });
+
+  if (s.imagemUrl) embed.setImage(s.imagemUrl);
+
+  return embed;
 }
 
 // ─── Montar rows de botões ────────────────────────────────────────────────────
