@@ -369,45 +369,35 @@ async function atualizarPainelProduto(guild, painelId) {
 
     const msg = await canal.messages.fetch(painel.mensagem_id);
 
-    const cor   = parseInt(painel.cor || 'FF6B6B', 16);
-    // Sanitizar descrição — shapeshift rejeita alguns Unicode especiais (ex: letras latinas pequenas)
-    const descricaoSegura = (painel.descricao || 'Selecione um plano abaixo para comprar.')
-      .replace(/[\u1D00-\u1D7F\u1D80-\u1DBF\u2C60-\u2C7F\uA720-\uA7FF]/g, c => c.normalize('NFKD')[0] || '')
-      .slice(0, 4096) || 'Selecione um plano abaixo para comprar.';
+    const cor = parseInt(painel.cor || 'FF6B6B', 16);
 
-    let embed;
-    try {
-      embed = new EmbedBuilder()
-        .setColor(cor)
-        .setTitle(`🛍️ ${painel.titulo || produto.nome}`)
-        .setDescription(descricaoSegura)
-        .setTimestamp()
-        .setFooter({ text: 'Máximo Store • Selecione um plano para comprar' });
-    } catch {
-      embed = new EmbedBuilder()
-        .setColor(cor)
-        .setTitle(`🛍️ ${painel.titulo || produto.nome}`)
-        .setDescription('Selecione um plano abaixo para comprar.')
-        .setTimestamp()
-        .setFooter({ text: 'Máximo Store • Selecione um plano para comprar' });
-    }
-
-    // Imagem: URL salva no banco (sempre válida) ou URL externa do embed original
-    const imagemBanco = painel.imagem_url || null;
-    const embedOriginal = msg.embeds[0];
-    const imagemOriginal = embedOriginal?.image?.url || embedOriginal?.thumbnail?.url || null;
-    const imagemCDN = imagemOriginal &&
+    // Imagem: URL salva no banco ou URL externa (não attachment expirado)
+    const imagemBanco    = painel.imagem_url || null;
+    const embedOriginal  = msg.embeds[0];
+    const imagemOriginal = embedOriginal?.image?.url || null;
+    const imagemCDN      = imagemOriginal &&
       !imagemOriginal.includes('cdn.discordapp.com/attachments') &&
       !imagemOriginal.includes('media.discordapp.net/attachments')
       ? imagemOriginal : null;
     const imagemValida = imagemBanco || imagemCDN;
-    if (imagemValida) {
-      try { embed.setImage(imagemValida); } catch { /* URL inválida — ignora */ }
-    }
+
+    // Montar embed como JSON puro — bypassa validação shapeshift (aceita qualquer Unicode)
+    const embedData = {
+      color:       isNaN(cor) ? 0xFF6B6B : cor,
+      title:       `🛍️ ${(painel.titulo || produto.nome || 'Produto').slice(0, 256)}`,
+      description: (painel.descricao || 'Selecione um plano abaixo para comprar.').slice(0, 4096),
+      timestamp:   new Date().toISOString(),
+      footer:      { text: 'Máximo Store • Selecione um plano para comprar' },
+    };
+    if (imagemValida) embedData.image = { url: imagemValida };
 
     const components = montarComponentes(variantes, painelId);
-    console.log(`[PainelProduto] Enviando — embed title="${embed.data.title}" components=${components.length} img=${embed.data.image?.url?.slice(0,40) || 'none'}`);
-    await msg.edit({ embeds: [embed], components, attachments: [] });
+    console.log(`[PainelProduto] Enviando — title="${embedData.title.slice(0,30)}" components=${components.length}`);
+
+    // Serializar components (ActionRowBuilder → JSON, ou já é JSON raw)
+    const componentsJSON = components.map(c => c?.toJSON ? c.toJSON() : c);
+
+    await msg.edit({ embeds: [embedData], components: componentsJSON, attachments: [] });
     console.log(`[PainelProduto] Edit OK ✅`);
   } catch (err) {
     console.error('[PainelProduto] Erro ao atualizar:', err.message);
