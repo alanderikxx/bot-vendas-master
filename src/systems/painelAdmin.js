@@ -766,15 +766,8 @@ async function handlePainelAdmin(interaction, client) {
 
   if (id === 'pa_caixa_criar') {
     if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
-    const modal = new ModalBuilder().setCustomId('pam_caixa_config').setTitle('➕ Criar Caixa Misteriosa');
-    modal.addComponents(
-      mRow(new TextInputBuilder().setCustomId('nome').setLabel('Nome da caixa').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: Caixa Premium')),
-      mRow(new TextInputBuilder().setCustomId('preco').setLabel('Preço (R$)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 5.00')),
-      mRow(new TextInputBuilder().setCustomId('canal_id').setLabel('ID do Canal onde o embed vai aparecer').setStyle(TextInputStyle.Short).setRequired(true)),
-      mRow(new TextInputBuilder().setCustomId('descricao').setLabel('Descrição (opcional)').setStyle(TextInputStyle.Paragraph).setRequired(false)),
-      mRow(new TextInputBuilder().setCustomId('imagem').setLabel('URL da imagem (opcional)').setStyle(TextInputStyle.Short).setRequired(false)),
-    );
-    return interaction.showModal(modal);
+    const cx = require('./caixaSubmenu');
+    return cx.abrirCriar(interaction);
   }
 
   // Alias antigo
@@ -793,53 +786,8 @@ async function handlePainelAdmin(interaction, client) {
 
   if (id === 'pa_caixa_add_item') {
     if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
-    await interaction.deferReply({ ephemeral: true });
-
-    // Listar caixas e variantes disponíveis de forma resumida
-    const { listarCaixasAtivas } = require('./caixaMisteriosa');
-    const caixas    = listarCaixasAtivas();
-    const variantes = db.prepare(`
-      SELECT vp.id, vp.nome as v_nome, pr.nome as p_nome,
-             (SELECT COUNT(*) FROM estoque_variante WHERE variante_id=vp.id AND usado=0) as estoque
-      FROM variantes_produto vp JOIN produtos pr ON vp.produto_id=pr.id
-      WHERE vp.ativo=1 ORDER BY pr.nome, vp.ordem
-    `).all();
-
-    if (!caixas.length)    return interaction.editReply({ content: '❌ Crie uma caixa primeiro com **➕ Criar Caixa**.' });
-    if (!variantes.length) return interaction.editReply({ content: '❌ Nenhuma variante cadastrada nos carrinhos.' });
-
-    const listaCaixas = caixas.map(c => `• \`${c.nome}\` (ID: \`${c.id.slice(0,8)}\`)`).join('\n');
-    const listaVars   = variantes.slice(0, 30).map(v =>
-      `• \`${v.id.slice(0,8)}\` — **${v.p_nome}** › ${v.v_nome} (${v.estoque} em estoque)`
-    ).join('\n');
-
-    return interaction.editReply({
-      content: [
-        '**🎁 Caixas disponíveis:**',
-        listaCaixas,
-        '',
-        '**📦 Produtos disponíveis:**',
-        listaVars,
-        variantes.length > 30 ? `\n_... e mais ${variantes.length - 30} produtos_` : '',
-        '',
-        '> Copie o nome da caixa e o ID da variante e use o botão abaixo:',
-      ].filter(Boolean).join('\n'),
-      components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('pa_caixa_add_item_modal').setLabel('🎯 Adicionar Item').setStyle(ButtonStyle.Success),
-      )],
-    });
-  }
-
-  if (id === 'pa_caixa_add_item_modal') {
-    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
-    const modal = new ModalBuilder().setCustomId('pam_caixa_add_item').setTitle('🎯 Add Item à Caixa');
-    modal.addComponents(
-      mRow(new TextInputBuilder().setCustomId('caixa_id').setLabel('ID da Caixa (primeiros 8 chars)').setStyle(TextInputStyle.Short).setRequired(true)),
-      mRow(new TextInputBuilder().setCustomId('variante_id').setLabel('ID da Variante (primeiros 8 chars)').setStyle(TextInputStyle.Short).setRequired(true)),
-      mRow(new TextInputBuilder().setCustomId('raridade').setLabel('Raridade: comum / raro / epico / lendario').setStyle(TextInputStyle.Short).setRequired(true).setValue('comum')),
-      mRow(new TextInputBuilder().setCustomId('chance').setLabel('Chance de drop (%) — todos da caixa somam 100').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 50')),
-    );
-    return interaction.showModal(modal);
+    const cx = require('./caixaSubmenu');
+    return cx.abrirItem(interaction);
   }
 
   if (id === 'pa_caixa_rem_item') {

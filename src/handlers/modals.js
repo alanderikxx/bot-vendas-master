@@ -32,19 +32,27 @@ module.exports = async (interaction, client) => {
   // ── Modais dos submenus admin (apm_*, aem_*, cum_*) ──────────────────────
   if (id.startsWith('apm_') || id.startsWith('aem_') || id.startsWith('cum_')) {
     const sub = require('../systems/adminSubmenus');
-    // Plano
     if (id === 'apm_dados') return sub.planoProcessarDados(interaction);
-    // Estoque
     if (id === 'aem_slot1') return sub.estoqueProcessarSlot(interaction, 1);
     if (id === 'aem_slot2') return sub.estoqueProcessarSlot(interaction, 2);
     if (id === 'aem_slot3') return sub.estoqueProcessarSlot(interaction, 3);
     if (id === 'aem_slot4') return sub.estoqueProcessarSlot(interaction, 4);
-    // Cupom
     if (id === 'cum_codigo')   return sub.cupomProcessar(interaction, 'codigo');
     if (id === 'cum_valor')    return sub.cupomProcessar(interaction, 'valor');
     if (id === 'cum_validade') return sub.cupomProcessar(interaction, 'validade');
     if (id === 'cum_limite')   return sub.cupomProcessar(interaction, 'limite');
     if (id === 'cum_lojas')    return sub.cupomProcessar(interaction, 'lojas');
+    return;
+  }
+
+  // ── Modais da caixa misteriosa (cxm_*) ────────────────────────────────────
+  if (id.startsWith('cxm_')) {
+    const cx = require('../systems/caixaSubmenu');
+    if (id === 'cxm_nome')      return cx.criarProcessarNome(interaction);
+    if (id === 'cxm_canal')     return cx.criarProcessarCanal(interaction);
+    if (id === 'cxm_desc')      return cx.criarProcessarDesc(interaction);
+    if (id === 'cxm_img')       return cx.criarProcessarImg(interaction);
+    if (id === 'cxm_item_dados') return cx.itemProcessarDados(interaction);
     return;
   }
 
@@ -229,6 +237,27 @@ module.exports = async (interaction, client) => {
     if (pedido.usuario_id !== interaction.user.id) return interaction.editReply({ content: '❌ Este pedido não é seu.' });
     if (pedido.status !== 'pendente') return interaction.editReply({ content: '⚠️ Pedido não está mais pendente.' });
 
+    // Verificar estoque disponível para a variante
+    let estoqueDisponivel = null;
+    try {
+      const nota = pedido.nota_fiscal ? JSON.parse(pedido.nota_fiscal) : null;
+      const varianteId = nota?.varianteId;
+      if (varianteId) {
+        const est = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(varianteId);
+        estoqueDisponivel = Number(est?.c || 0);
+      }
+    } catch {}
+
+    if (estoqueDisponivel !== null && qtd > estoqueDisponivel) {
+      return interaction.editReply({
+        content: [
+          `❌ Estoque insuficiente!`,
+          `📦 Disponível: **${estoqueDisponivel}** unidade(s)`,
+          `🔢 Solicitado: **${qtd}**`,
+        ].join('\n'),
+      });
+    }
+
     const produto    = Produtos.get(pedido.produto_id);
     const valorUnit  = pedido.valor_unit || (produto?.preco_promo || produto?.preco) || 0;
     const novoTotal  = Number(valorUnit) * qtd;
@@ -253,9 +282,10 @@ module.exports = async (interaction, client) => {
         .setColor(0x57F287)
         .setTitle('✅ Quantidade Atualizada')
         .addFields(
-          { name: '📦 Produto',    value: produto?.nome || '—',             inline: true },
-          { name: '🔢 Quantidade', value: `${qtd}x`,                         inline: true },
-          { name: '💵 Novo Total', value: `R$ ${novoTotal.toFixed(2)}`,      inline: true },
+          { name: '📦 Produto',    value: produto?.nome || '—',                                        inline: true },
+          { name: '🔢 Quantidade', value: `${qtd}x`,                                                   inline: true },
+          { name: '💵 Novo Total', value: `R$ ${novoTotal.toFixed(2)}`,                               inline: true },
+          ...(estoqueDisponivel !== null ? [{ name: '📊 Estoque restante', value: `${estoqueDisponivel - qtd} unidade(s) após entrega`, inline: false }] : []),
         )
         .setTimestamp()],
     });

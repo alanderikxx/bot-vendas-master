@@ -102,6 +102,24 @@ module.exports = async (interaction, client) => {
     if (id === 'cu_cancelar') return sub.cupomCancelar(interaction);
   }
 
+  // ── Submenu Caixa Misteriosa (cxc_*, cxi_*) ──────────────────────────────
+  if (id.startsWith('cxc_') || id.startsWith('cxi_')) {
+    const cx = require('../systems/caixaSubmenu');
+    // Criar caixa
+    if (id === 'cxc_nome')     return cx.criarModalNome(interaction);
+    if (id === 'cxc_canal')    return cx.criarModalCanal(interaction);
+    if (id === 'cxc_desc')     return cx.criarModalDesc(interaction);
+    if (id === 'cxc_img')      return cx.criarModalImg(interaction);
+    if (id === 'cxc_salvar')   return cx.criarSalvar(interaction);
+    if (id === 'cxc_cancelar') return cx.criarCancelar(interaction);
+    // Add item
+    if (id === 'cxi_caixa')    return cx.itemSelecionarCaixa(interaction);
+    if (id === 'cxi_variante') return cx.itemSelecionarVariante(interaction);
+    if (id === 'cxi_dados')    return cx.itemModalDados(interaction);
+    if (id === 'cxi_salvar')   return cx.itemSalvar(interaction);
+    if (id === 'cxi_cancelar') return cx.itemCancelar(interaction);
+  }
+
   // ── Resgate de códigos de coins ───────────────────────────────────────────
   if (id === 'resgatar_codigo_coins') {
     const modal = new (require('discord.js').ModalBuilder)()

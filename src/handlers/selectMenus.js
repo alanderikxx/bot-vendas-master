@@ -28,6 +28,15 @@ module.exports = async (interaction, client) => {
     const sub = require('../systems/adminSubmenus');
     return sub.estoqueSelectVariante(interaction);
   }
+  // Selects da caixa misteriosa
+  if (id === 'cxs_caixa') {
+    const cx = require('../systems/caixaSubmenu');
+    return cx.itemSelectCaixa(interaction);
+  }
+  if (id === 'cxs_variante') {
+    const cx = require('../systems/caixaSubmenu');
+    return cx.itemSelectVariante(interaction);
+  }
 
   // ── Selecionar carrinho para editar ──────────────────────────────────────
   if (id === 'pa_select_editar_carrinho') {
