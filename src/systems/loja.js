@@ -340,7 +340,9 @@ async function iniciarCompraVariante(interaction, varianteId, client) {
   // Verificar estoque — apenas se não for coins
   if (!isCoins) {
     const digital = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(varianteId);
-    if (digital.c === 0) {
+    const qtdEstoque = Number(digital?.c || 0);
+    console.log(`[Compra] variante="${variante.nome}" estoque=${qtdEstoque}`);
+    if (qtdEstoque === 0) {
       return interaction.editReply({
         embeds: [new EmbedBuilder()
           .setColor(config.colors.error)
