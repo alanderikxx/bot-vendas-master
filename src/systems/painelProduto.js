@@ -335,25 +335,20 @@ function montarComponentes(variantes, painelId) {
   const isCoins = produto?.nome?.toLowerCase().includes('coin') || produto?.tipo === 'coins';
 
   const options = variantesVisiveis.map(v => {
-    let qtd, emoji;
+    let descBase;
     if (isCoins) {
-      qtd   = '∞';
-      emoji = '🪙';
+      descBase = 'Entrega automatica';
     } else {
       const dig = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id);
-      qtd   = dig.c;
-      emoji = qtd === 0 ? '❌' : '✅';
+      const qtd = dig?.c || 0;
+      descBase  = qtd === 0 ? 'Sem estoque' : `${qtd} disponivel`;
     }
-
-    const preco  = `R$ ${Number(v.preco).toFixed(2)}`;
-    const nome   = v.nome.slice(0, 90 - preco.length);
-    const label  = `${nome} • ${preco}`.slice(0, 100);
-
-    const descBase = v.descricao
-      ? v.descricao
-      : isCoins ? 'Entrega automática' : (qtd === 0 ? 'Sem estoque' : `${qtd} disponível`);
-    const description = descBase.slice(0, 100);
-
+    const preco   = `R$ ${Number(v.preco).toFixed(2)}`;
+    const nomeRaw = (v.nome || 'Plano').normalize('NFKD').replace(/[^\x20-\x7E\u00C0-\u024F]/g, '');
+    const nome    = nomeRaw.slice(0, 90 - preco.length) || 'Plano';
+    const label   = `${nome} • ${preco}`.slice(0, 100);
+    const descRaw = (v.descricao || descBase).normalize('NFKD').replace(/[^\x20-\x7E\u00C0-\u024F]/g, '');
+    const description = (descRaw || descBase).slice(0, 100);
     return { label, description, value: v.id };
   });
 
@@ -391,17 +386,19 @@ async function atualizarPainelProduto(guild, painelId) {
     const options = variantes.slice(0, 25).map(v => {
       let descBase;
       if (isCoins) {
-        descBase = 'Entrega automática';
+        descBase = 'Entrega automatica';
       } else {
         const c  = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id)?.c || 0;
-        descBase = c === 0 ? 'Sem estoque' : `${c} disponível`;
+        descBase = c === 0 ? 'Sem estoque' : `${c} disponivel`;
       }
       const preco = `R$ ${Number(v.preco).toFixed(2)}`;
-      const nome  = (v.nome || 'Plano').slice(0, 90 - preco.length);
-      const label = `${nome} • ${preco}`.slice(0, 100);
-      const desc  = (v.descricao || descBase).slice(0, 100);
-      console.log(`  [opt] label="${label}" (${label.length}) desc="${desc}" (${desc.length}) value="${v.id}"`);
-      // Emoji como string — objeto {name} causa erro de validação no discord.js v14
+      // Normaliza o nome: remove caracteres Unicode especiais, mantém só ASCII + comum
+      const nomeRaw  = (v.nome || 'Plano').normalize('NFKD').replace(/[^\x20-\x7E\u00C0-\u024F]/g, '');
+      const nome     = nomeRaw.slice(0, 90 - preco.length) || 'Plano';
+      const label    = `${nome} • ${preco}`.slice(0, 100);
+      const descRaw  = (v.descricao || descBase).normalize('NFKD').replace(/[^\x20-\x7E\u00C0-\u024F]/g, '');
+      const desc     = descRaw.slice(0, 100) || descBase.slice(0, 100);
+      console.log(`  [opt] label="${label}" (${label.length}) desc="${desc}" value="${v.id}"`);
       return { label, description: desc, value: v.id };
     });
 
