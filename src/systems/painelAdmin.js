@@ -15,99 +15,111 @@ const moment  = require('moment-timezone');
 const CANAL_PAINEL = '1533638769901703178';
 
 // ─── Submenus disponíveis ─────────────────────────────────────────────────────
-const MENUS = {
-  HOME:      'home',
-  CARRINHO:  'carrinho',
-  PRODUTOS:  'produtos',
-  GESTAO:    'gestao',
-  USUARIOS:  'usuarios',
-};
+// Loja+ pode ver: pa_menu_loja
+// Admin+ pode ver: pa_menu_operacoes, pa_menu_usuarios, pa_menu_caixa
 
 // ─── Embed e rows por submenu ─────────────────────────────────────────────────
 
-async function buildHome() {
-  const hoje = Math.floor(new Date().setHours(0,0,0,0)/1000);
+async function buildHome(member) {
+  const hoje      = Math.floor(new Date().setHours(0,0,0,0)/1000);
   const lojaAberta = Config.get('loja_aberta');
   const manutencao = Config.get('manutencao');
   const nomeLoja   = Config.get('nome_loja') || 'Máximo Store';
 
   const s = db.prepare(`
     SELECT
-      (SELECT COUNT(*) FROM pedidos WHERE status IN ('pago','entregue'))                          AS total_vendas,
-      (SELECT COALESCE(SUM(valor_total),0) FROM pedidos WHERE status IN ('pago','entregue'))       AS receita_total,
-      (SELECT COUNT(*) FROM pedidos WHERE status='pendente')                                       AS pendentes,
-      (SELECT COUNT(*) FROM pedidos WHERE status IN ('pago','entregue') AND pago_em>=?)            AS vendas_hoje,
+      (SELECT COUNT(*) FROM pedidos WHERE status IN ('pago','entregue'))                           AS total_vendas,
+      (SELECT COALESCE(SUM(valor_total),0) FROM pedidos WHERE status IN ('pago','entregue'))        AS receita_total,
+      (SELECT COUNT(*) FROM pedidos WHERE status='pendente')                                        AS pendentes,
+      (SELECT COUNT(*) FROM pedidos WHERE status IN ('pago','entregue') AND pago_em>=?)             AS vendas_hoje,
       (SELECT COALESCE(SUM(valor_total),0) FROM pedidos WHERE status IN ('pago','entregue') AND pago_em>=?) AS receita_hoje,
-      (SELECT COUNT(*) FROM tickets WHERE status='aberto')                                         AS tickets,
-      (SELECT COUNT(*) FROM reembolsos WHERE status='pendente')                                    AS reembolsos,
-      (SELECT COUNT(*) FROM usuarios)                                                              AS usuarios,
-      (SELECT COUNT(*) FROM produtos WHERE ativo=1)                                               AS produtos,
-      (SELECT COUNT(*) FROM paineis_canal WHERE ativo=1)                                          AS paineis
+      (SELECT COUNT(*) FROM tickets WHERE status='aberto')                                          AS tickets,
+      (SELECT COUNT(*) FROM reembolsos WHERE status='pendente')                                     AS reembolsos,
+      (SELECT COUNT(*) FROM usuarios)                                                               AS usuarios,
+      (SELECT COUNT(*) FROM produtos WHERE ativo=1)                                                AS produtos,
+      (SELECT COUNT(*) FROM paineis_canal WHERE ativo=1)                                           AS paineis
   `).get(hoje, hoje);
 
   const status = manutencao ? '🔧 Manutenção' : lojaAberta ? '🟢 Aberta' : '🔴 Fechada';
+  const ehAdmin = member ? isAdmin(member) : false;
 
   const embed = new EmbedBuilder()
     .setColor(manutencao ? config.colors.warning : lojaAberta ? config.colors.success : config.colors.error)
-    .setTitle(`🎛️ Painel Admin — ${nomeLoja}`)
+    .setTitle(`🎛️ Painel — ${nomeLoja}`)
     .setDescription(`**Status:** ${status} • \`${moment().tz(config.timezone).format('DD/MM HH:mm')}\``)
     .addFields(
-      { name: '📅 Hoje',       value: `**${s.vendas_hoje}** vendas\n**R$ ${Number(s.receita_hoje).toFixed(2)}**`, inline: true },
-      { name: '📊 Total',      value: `**${s.total_vendas}** vendas\n**R$ ${Number(s.receita_total).toFixed(2)}**`, inline: true },
-      { name: '⚡ Urgente',    value: `⏳ ${s.pendentes} pendentes\n🎫 ${s.tickets} tickets\n↩️ ${s.reembolsos} reimb.`, inline: true },
-      { name: '📦 Loja',       value: `${s.produtos} produtos\n${s.paineis} painéis`, inline: true },
-      { name: '👥 Usuários',   value: `${s.usuarios} cadastrados`, inline: true },
+      { name: '📅 Hoje',     value: `**${s.vendas_hoje}** vendas\n**R$ ${Number(s.receita_hoje).toFixed(2)}**`,   inline: true },
+      { name: '📊 Total',    value: `**${s.total_vendas}** vendas\n**R$ ${Number(s.receita_total).toFixed(2)}**`, inline: true },
+      { name: '⚡ Urgente',  value: `⏳ ${s.pendentes} pend.\n🎫 ${s.tickets} tickets\n↩️ ${s.reembolsos} reimb.`, inline: true },
+      { name: '📦 Loja',     value: `${s.produtos} produtos\n${s.paineis} painéis`,                               inline: true },
+      { name: '👥 Usuários', value: `${s.usuarios} cadastrados`,                                                  inline: true },
     )
-    .setFooter({ text: 'Máximo Store • Painel Admin' })
+    .setFooter({ text: 'Máximo Store • Painel' })
     .setTimestamp();
 
-  // Row 1 — Controles da loja
-  const row1 = new ActionRowBuilder().addComponents(
-    btn('pa_toggle_loja',  lojaAberta ? '🔴 Fechar Loja' : '🟢 Abrir Loja', lojaAberta ? ButtonStyle.Danger : ButtonStyle.Success),
-    btn('pa_toggle_manut', manutencao ? '✅ Sair Manutenção' : '🔧 Manutenção', manutencao ? ButtonStyle.Success : ButtonStyle.Secondary),
-    btn('pa_atualizar',    '🔄 Atualizar',  ButtonStyle.Primary),
-    btn('pa_relatorio',    '📊 Relatório',  ButtonStyle.Secondary),
-  );
+  const rows = [];
 
-  // Row 2 — Navegação de submenus
-  const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_menu_carrinho', '🛒 Carrinhos',       ButtonStyle.Primary),
-    btn('pa_menu_produtos', '📦 Produtos',         ButtonStyle.Primary),
-    btn('pa_menu_gestao',   '⚙️ Gestão',          ButtonStyle.Secondary),
-    btn('pa_menu_usuarios', '👥 Usuários',        ButtonStyle.Secondary),
-    btn('pa_menu_caixa',    '🎁 Caixa Misteriosa', ButtonStyle.Success),
-  );
+  // Row 1 — Controles rápidos (só Admin+)
+  if (ehAdmin) {
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('pa_toggle_loja',  lojaAberta ? '🔴 Fechar Loja' : '🟢 Abrir Loja', lojaAberta ? ButtonStyle.Danger : ButtonStyle.Success),
+      btn('pa_toggle_manut', manutencao ? '✅ Sair Manutenção' : '🔧 Manutenção', manutencao ? ButtonStyle.Success : ButtonStyle.Secondary),
+      btn('pa_atualizar',    '🔄 Atualizar', ButtonStyle.Primary),
+      btn('pa_relatorio',    '📊 Relatório', ButtonStyle.Secondary),
+    ));
+  } else {
+    rows.push(new ActionRowBuilder().addComponents(
+      btn('pa_atualizar', '🔄 Atualizar', ButtonStyle.Primary),
+      btn('pa_relatorio', '📊 Relatório', ButtonStyle.Secondary),
+    ));
+  }
 
-  return { embed, components: [row1, row2] };
+  // Row 2 — Navegação (Loja+ vê menu Loja; Admin+ vê tudo)
+  const navRow = new ActionRowBuilder().addComponents(
+    btn('pa_menu_loja', '🛒 Loja', ButtonStyle.Success),
+  );
+  if (ehAdmin) {
+    navRow.addComponents(
+      btn('pa_menu_operacoes', '⚙️ Operações',   ButtonStyle.Primary),
+      btn('pa_menu_usuarios',  '👥 Usuários',     ButtonStyle.Secondary),
+      btn('pa_menu_caixa',     '🎁 Caixas',       ButtonStyle.Secondary),
+    );
+  }
+  rows.push(navRow);
+
+  return { embed, components: rows };
 }
 
-function buildCarrinhoMenu() {
+// ─── Menu Loja (cargo Loja+) ──────────────────────────────────────────────────
+function buildLojaMenu() {
   const embed = new EmbedBuilder()
     .setColor(config.colors.loja)
-    .setTitle('🛒 Gerenciar Carrinhos')
+    .setTitle('🛒 Painel — Loja')
     .setDescription([
       '**Fluxo para criar um carrinho:**',
-      '`1.` **➕ Criar Carrinho** — preenche nome, canal, imagem',
-      '`2.` **+ Add Plano** — adiciona planos com preço',
-      '`3.` **📥 Add Estoque** — cola os itens (1 por linha)',
+      '`1.` **➕ Criar** — define nome, canal e imagem',
+      '`2.` **＋ Plano** — adiciona planos com preço',
+      '`3.` **📥 Estoque** — cola os itens (1 por linha)',
       '',
-      '> Ao adicionar estoque a imagem é preservada automaticamente.',
+      '**Cupons** podem ser criados e listados abaixo.',
     ].join('\n'))
-    .setFooter({ text: 'Máximo Store • Carrinhos' })
+    .setFooter({ text: 'Máximo Store • Loja' })
     .setTimestamp();
 
   const row1 = new ActionRowBuilder().addComponents(
-    btn('pa_criar_carrinho',   '➕ Criar Carrinho',   ButtonStyle.Success),
-    btn('pa_listar_carrinhos', '📋 Ver Carrinhos',    ButtonStyle.Primary),
-    btn('pa_add_plano',        '+ Add Plano',         ButtonStyle.Secondary),
-    btn('pa_add_estoque',      '📥 Add Estoque',      ButtonStyle.Secondary),
+    btn('pa_criar_carrinho',   '➕ Criar',         ButtonStyle.Success),
+    btn('pa_listar_carrinhos', '📋 Ver',           ButtonStyle.Primary),
+    btn('pa_add_plano',        '＋ Plano',          ButtonStyle.Secondary),
+    btn('pa_add_estoque',      '📥 Estoque',       ButtonStyle.Secondary),
+    btn('pa_remover_plano',    '➖ Rem Plano',     ButtonStyle.Danger),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_remover_plano',    '➖ Remover Plano',    ButtonStyle.Danger),
-    btn('pa_deletar_carrinho', '🗑️ Deletar Carrinho', ButtonStyle.Danger),
-    btn('pa_criar_cupom',      '🎟️ Criar Cupom',      ButtonStyle.Success),
-    btn('pa_listar_cupons',    '🎟️ Ver Cupons',       ButtonStyle.Secondary),
+    btn('pa_criar_cupom',      '🎟️ Criar Cupom',   ButtonStyle.Success),
+    btn('pa_listar_cupons',    '🎟️ Ver Cupons',    ButtonStyle.Secondary),
+    btn('pa_estoque_baixo',    '📉 Est. Baixo',    ButtonStyle.Secondary),
+    btn('pa_top_produtos',     '🏆 Top',           ButtonStyle.Secondary),
+    btn('pa_deletar_carrinho', '🗑️ Deletar',       ButtonStyle.Danger),
   );
 
   const row3 = new ActionRowBuilder().addComponents(
@@ -117,24 +129,8 @@ function buildCarrinhoMenu() {
   return { embed, components: [row1, row2, row3] };
 }
 
-function buildProdutosMenu() {
-  const embed = new EmbedBuilder()
-    .setColor(config.colors.primary)
-    .setTitle('📦 Produtos & Estoque')
-    .setDescription('Consulte produtos, estoque e top vendas.')
-    .setFooter({ text: 'Máximo Store • Produtos' })
-    .setTimestamp();
-
-  const row1 = new ActionRowBuilder().addComponents(
-    btn('pa_estoque_baixo', '📉 Estoque Baixo', ButtonStyle.Secondary),
-    btn('pa_top_produtos',  '🏆 Top Produtos',  ButtonStyle.Secondary),
-    btn('pa_home',          '🔙 Voltar',        ButtonStyle.Secondary),
-  );
-
-  return { embed, components: [row1] };
-}
-
-function buildGestaoMenu() {
+// ─── Menu Operações (Admin+) ──────────────────────────────────────────────────
+function buildOperacoesMenu() {
   const s = db.prepare(`
     SELECT
       (SELECT COUNT(*) FROM reembolsos WHERE status='pendente') AS reimb,
@@ -144,35 +140,59 @@ function buildGestaoMenu() {
 
   const embed = new EmbedBuilder()
     .setColor(s.reimb > 0 || s.tick > 0 ? config.colors.warning : config.colors.success)
-    .setTitle('⚙️ Gestão Operacional')
-    .setDescription('Gerencie reembolsos, tickets, pedidos pendentes e flash sales.')
+    .setTitle('⚙️ Painel — Operações')
+    .setDescription('Gerencie tickets, reembolsos, pedidos e campanhas.')
     .addFields(
       { name: '↩️ Reembolsos', value: `${s.reimb} pendente(s)`, inline: true },
       { name: '🎫 Tickets',    value: `${s.tick} aberto(s)`,    inline: true },
       { name: '⏳ Pedidos',    value: `${s.pend} pendente(s)`,  inline: true },
     )
-    .setFooter({ text: 'Máximo Store • Gestão' })
+    .setFooter({ text: 'Máximo Store • Operações' })
     .setTimestamp();
 
   const row1 = new ActionRowBuilder().addComponents(
-    btn('pa_reembolsos', `↩️ Reembolsos (${s.reimb})`, s.reimb > 0 ? ButtonStyle.Danger   : ButtonStyle.Secondary),
-    btn('pa_tickets',    `🎫 Tickets (${s.tick})`,     s.tick > 0  ? ButtonStyle.Primary  : ButtonStyle.Secondary),
-    btn('pa_pendentes',  `⏳ Pendentes (${s.pend})`,   s.pend > 0  ? ButtonStyle.Primary  : ButtonStyle.Secondary),
+    btn('pa_reembolsos',  `↩️ Reembolsos (${s.reimb})`, s.reimb > 0 ? ButtonStyle.Danger  : ButtonStyle.Secondary),
+    btn('pa_tickets',     `🎫 Tickets (${s.tick})`,     s.tick > 0  ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    btn('pa_pendentes',   `⏳ Pendentes (${s.pend})`,   s.pend > 0  ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    btn('pa_relatorio',   '📊 Relatório',               ButtonStyle.Secondary),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_fechar_todos_tickets', '🔒 Fechar Todos Tickets', ButtonStyle.Danger),
-    btn('pa_cancelar_pendentes',   '❌ Cancelar Pendentes',   ButtonStyle.Danger),
-    btn('pa_remover_coins',        '🪙 Remover Coins',        ButtonStyle.Secondary),
+    btn('pa_flashsale',              '⚡ Flash Sale',         ButtonStyle.Danger),
+    btn('pa_fechar_todos_tickets',   '🔒 Fechar Tickets',     ButtonStyle.Danger),
+    btn('pa_cancelar_pendentes',     '❌ Cancelar Pedidos',   ButtonStyle.Danger),
+    btn('pa_anuncio',                '📣 Anúncio DM',         ButtonStyle.Primary),
   );
 
   const row3 = new ActionRowBuilder().addComponents(
-    btn('pa_flashsale',  '⚡ Flash Sale',  ButtonStyle.Danger),
-    btn('pa_relatorio',  '📊 Relatório',  ButtonStyle.Secondary),
-    btn('pa_home',       '🔙 Voltar',     ButtonStyle.Secondary),
+    btn('pa_home', '🔙 Voltar', ButtonStyle.Secondary),
   );
 
   return { embed, components: [row1, row2, row3] };
+}
+
+// ─── Menu Usuários (Admin+) ───────────────────────────────────────────────────
+function buildUsuariosMenu() {
+  const embed = new EmbedBuilder()
+    .setColor(config.colors.info)
+    .setTitle('👥 Painel — Usuários')
+    .setDescription('Busque, gerencie coins e visualize rankings.')
+    .setFooter({ text: 'Máximo Store • Usuários' })
+    .setTimestamp();
+
+  const row1 = new ActionRowBuilder().addComponents(
+    btn('pa_buscar_usuario', '🔍 Buscar',        ButtonStyle.Primary),
+    btn('pa_add_coins',      '🪙 Add Coins',      ButtonStyle.Success),
+    btn('pa_remover_coins',  '🪙 Rem Coins',      ButtonStyle.Danger),
+    btn('pa_gerar_codigos',  '🎫 Gerar Códigos',  ButtonStyle.Secondary),
+    btn('pa_ranking',        '🏆 Ranking',        ButtonStyle.Secondary),
+  );
+
+  const row2 = new ActionRowBuilder().addComponents(
+    btn('pa_home', '🔙 Voltar', ButtonStyle.Secondary),
+  );
+
+  return { embed, components: [row1, row2] };
 }
 
 function buildCaixaMenu() {
@@ -181,53 +201,29 @@ function buildCaixaMenu() {
 
   const embed = new EmbedBuilder()
     .setColor(0xFFD700)
-    .setTitle('🎁 Caixas Misteriosas')
+    .setTitle('🎁 Painel — Caixas Misteriosas')
     .setDescription(caixas.length
       ? caixas.map(c => {
           const itens = getItensCaixa(c.id);
           const linhas = itens.map(i => `  ${RARIDADES[i.raridade]?.emoji || '⚪'} ${i.variante_nome} — ${i.chance}%`);
           return [`**🎁 ${c.nome}** — R$ ${c.preco.toFixed(2)} | 🎰 ${c.total_abertas} abertas`, ...linhas].join('\n');
         }).join('\n\n')
-      : '❌ Nenhuma caixa criada.\nClique em **➕ Criar Caixa** para começar.')
-    .setFooter({ text: 'Máximo Store • Caixas Misteriosas' })
+      : '❌ Nenhuma caixa criada.\nClique em **➕ Criar** para começar.')
+    .setFooter({ text: 'Máximo Store • Caixas' })
     .setTimestamp();
 
   const row1 = new ActionRowBuilder().addComponents(
-    btn('pa_caixa_criar',       '➕ Criar Caixa',        ButtonStyle.Success),
-    btn('pa_caixa_add_item',    '🎯 Add Item',            ButtonStyle.Primary),
-    btn('pa_caixa_rem_item',    '➖ Rem Item',            ButtonStyle.Danger),
-    btn('pa_caixa_deletar',     '🗑️ Deletar Caixa',      ButtonStyle.Danger),
+    btn('pa_caixa_criar',     '➕ Criar',    ButtonStyle.Success),
+    btn('pa_caixa_add_item',  '🎯 Add Item', ButtonStyle.Primary),
+    btn('pa_caixa_rem_item',  '➖ Rem Item', ButtonStyle.Danger),
+    btn('pa_caixa_deletar',   '🗑️ Deletar',  ButtonStyle.Danger),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_caixa_publicar',    '📢 Publicar',            ButtonStyle.Success),
-    btn('pa_caixa_historico',   '📊 Histórico',           ButtonStyle.Secondary),
-    btn('pa_caixa_toggle',      '🔴/🟢 Ativar/Desativar', ButtonStyle.Secondary),
-    btn('pa_home',              '🔙 Voltar',              ButtonStyle.Secondary),
-  );
-
-  return { embed, components: [row1, row2] };
-}
-
-function buildUsuariosMenu() {
-  const embed = new EmbedBuilder()
-    .setColor(config.colors.info)
-    .setTitle('👥 Gerenciar Usuários')
-    .setDescription('Busque usuários, gerencie coins e envie anúncios por DM.')
-    .setFooter({ text: 'Máximo Store • Usuários' })
-    .setTimestamp();
-
-  const row1 = new ActionRowBuilder().addComponents(
-    btn('pa_buscar_usuario', '🔍 Buscar Usuário',  ButtonStyle.Primary),
-    btn('pa_add_coins',      '🪙 Add Coins',        ButtonStyle.Success),
-    btn('pa_remover_coins',  '🪙 Remover Coins',    ButtonStyle.Danger),
-    btn('pa_gerar_codigos',  '🎫 Gerar Códigos',    ButtonStyle.Secondary),
-  );
-
-  const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_anuncio',  '📣 Anúncio DM',  ButtonStyle.Primary),
-    btn('pa_ranking',  '🏆 Ranking',      ButtonStyle.Secondary),
-    btn('pa_home',     '🔙 Voltar',       ButtonStyle.Secondary),
+    btn('pa_caixa_publicar',  '📢 Publicar',       ButtonStyle.Success),
+    btn('pa_caixa_historico', '📊 Histórico',      ButtonStyle.Secondary),
+    btn('pa_caixa_toggle',    '🔴/🟢 Ativar',      ButtonStyle.Secondary),
+    btn('pa_home',            '🔙 Voltar',         ButtonStyle.Secondary),
   );
 
   return { embed, components: [row1, row2] };
@@ -240,7 +236,7 @@ async function enviarPainelFixo(guild) {
     const canal = guild.channels.cache.get(CANAL_PAINEL);
     if (!canal) return console.error('[PainelAdmin] Canal não encontrado:', CANAL_PAINEL);
 
-    const { embed, components } = await buildHome();
+    const { embed, components } = await buildHome(null);
 
     // Buscar mensagem existente
     const msgs = await canal.messages.fetch({ limit: 15 }).catch(() => null);
@@ -267,7 +263,7 @@ async function atualizarPainelAdmin(guild) {
     if (!msgId) return enviarPainelFixo(guild);
     const msg = await canal.messages.fetch(msgId).catch(() => null);
     if (!msg) return enviarPainelFixo(guild);
-    const { embed, components } = await buildHome();
+    const { embed, components } = await buildHome(null);
     await msg.edit({ embeds: [embed], components });
   } catch (err) {
     console.error('[PainelAdmin] Atualizar:', err.message);
@@ -284,28 +280,39 @@ async function handlePainelAdmin(interaction, client) {
 
   // ── Navegação de submenus ─────────────────────────────────────────────────
   if (id === 'pa_home') {
-    const { embed, components } = await buildHome();
+    const { embed, components } = await buildHome(interaction.member);
     return interaction.update({ embeds: [embed], components }).catch(() =>
       interaction.editReply({ embeds: [embed], components }));
   }
-  if (id === 'pa_menu_carrinho') {
-    const { embed, components } = buildCarrinhoMenu();
+  if (id === 'pa_menu_loja') {
+    if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja+.', ephemeral: true });
+    const { embed, components } = buildLojaMenu();
     return interaction.update({ embeds: [embed], components });
   }
-  if (id === 'pa_menu_produtos') {
-    const { embed, components } = buildProdutosMenu();
-    return interaction.update({ embeds: [embed], components });
-  }
-  if (id === 'pa_menu_gestao') {
-    const { embed, components } = buildGestaoMenu();
+  if (id === 'pa_menu_operacoes') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const { embed, components } = buildOperacoesMenu();
     return interaction.update({ embeds: [embed], components });
   }
   if (id === 'pa_menu_usuarios') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
     const { embed, components } = buildUsuariosMenu();
     return interaction.update({ embeds: [embed], components });
   }
   if (id === 'pa_menu_caixa') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
     const { embed, components } = buildCaixaMenu();
+    return interaction.update({ embeds: [embed], components });
+  }
+  // Aliases antigos para não quebrar nada
+  if (id === 'pa_menu_carrinho') {
+    if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja+.', ephemeral: true });
+    const { embed, components } = buildLojaMenu();
+    return interaction.update({ embeds: [embed], components });
+  }
+  if (id === 'pa_menu_gestao') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const { embed, components } = buildOperacoesMenu();
     return interaction.update({ embeds: [embed], components });
   }
 
