@@ -588,8 +588,12 @@ async function liberarPedidoManual(interaction, pedidoId, client) {
 
   await interaction.deferReply({ ephemeral: false });
 
+  // Preservar nota_fiscal original (tem o varianteId) e só marcar como manual
+  const notaOriginal = (() => { try { return pedido.nota_fiscal ? JSON.parse(pedido.nota_fiscal) : {}; } catch { return {}; } })();
+  const notaNova = { ...notaOriginal, manual: true, autorizadoPor: interaction.user.id };
+
   db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now'), nota_fiscal=? WHERE id=?")
-    .run(JSON.stringify({ manual: true, autorizadoPor: interaction.user.id }), pedidoId);
+    .run(JSON.stringify(notaNova), pedidoId);
 
   // Entregar produto no privado
   const pedidoAtualizado = Pedidos.get(pedidoId);
