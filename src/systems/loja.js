@@ -592,12 +592,80 @@ async function liberarPedidoManual(interaction, pedidoId, client) {
   const notaOriginal = (() => { try { return pedido.nota_fiscal ? JSON.parse(pedido.nota_fiscal) : {}; } catch { return {}; } })();
   const notaNova = { ...notaOriginal, manual: true, autorizadoPor: interaction.user.id };
 
-  db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now'), nota_fiscal=? WHERE id=?")
+  db.prepare("UPDATE pedidos SET status='entregue', pago_em=strftime('%s','now'), entregue_em=strftime('%s','now'), nota_fiscal=? WHERE id=?")
     .run(JSON.stringify(notaNova), pedidoId);
 
-  // Entregar produto no privado
+  // Entregar o item do estoque sem contar como venda (sem atualizar stats do usuário)
   const pedidoAtualizado = Pedidos.get(pedidoId);
-  await entregarProduto(pedidoAtualizado, client || interaction.client);
+  const produto = Produtos.get(pedidoAtualizado.produto_id);
+  let conteudo = null;
+
+  try {
+    const nota = notaNova;
+    const varianteId = nota?.varianteId;
+    const qtd = Math.max(1, parseInt(pedidoAtualizado.quantidade) || 1);
+
+    if (varianteId) {
+      const { pegarItemVariante } = require('./painelProduto');
+      const itens = [];
+      for (let i = 0; i < qtd; i++) {
+        const item = pegarItemVariante(varianteId, pedidoAtualizado.usuario_id, pedidoId);
+        if (item) itens.push(item);
+        else break;
+      }
+      conteudo = itens.length > 0 ? itens.join('\n') : null;
+    }
+
+    if (!conteudo) {
+      // Fallback estoque global
+      const item = db.prepare('SELECT * FROM estoque_digital WHERE produto_id=? AND usado=0 LIMIT 1').get(pedidoAtualizado.produto_id);
+      if (item) {
+        db.prepare("UPDATE estoque_digital SET usado=1,usado_por=?,usado_em=strftime('%s','now'),pedido_id=? WHERE id=?")
+          .run(pedidoAtualizado.usuario_id, pedidoId, item.id);
+        conteudo = item.conteudo;
+      }
+    }
+
+    db.prepare('UPDATE pedidos SET conteudo_entregue=? WHERE id=?').run(conteudo || 'Entregue manualmente', pedidoId);
+  } catch (err) {
+    console.error('[LiberarManual]', err.message);
+  }
+
+  // Enviar produto no privado do cliente
+  const guild  = client || interaction.client;
+  const guildObj = guild?.guilds?.cache?.first();
+  if (guildObj && conteudo) {
+    const member = await guildObj.members.fetch(pedido.usuario_id).catch(() => null);
+    if (member) {
+      const { t, getIdioma, btnIdioma } = require('./i18n');
+      const idioma = getIdioma(pedido.usuario_id);
+      const chunks = [];
+      let resto = conteudo;
+      while (resto.length > 0) { chunks.push(resto.slice(0, 900)); resto = resto.slice(900); }
+
+      const embed = new EmbedBuilder()
+        .setColor(config.colors.success)
+        .setTitle(t('delivery_title', idioma))
+        .setDescription(t('delivery_thanks', idioma, member.displayName))
+        .addFields(
+          { name: t('delivery_product', idioma), value: `**${produto?.nome || '—'}**`, inline: true },
+          { name: t('delivery_order',   idioma), value: `\`${pedidoId.slice(0,8).toUpperCase()}\``, inline: true },
+        )
+        .setTimestamp()
+        .setFooter({ text: t('delivery_footer', idioma) });
+
+      for (let i = 0; i < chunks.length; i++) {
+        embed.addFields({ name: i === 0 ? t('delivery_your_product', idioma) : `📦 Cont. (${i+1})`, value: `\`\`\`\n${chunks[i]}\n\`\`\``, inline: false });
+      }
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`confirmar_entrega_${pedidoId}`).setLabel(t('delivery_confirm', idioma)).setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`avaliar_${pedidoId}`).setLabel(t('delivery_rate', idioma)).setStyle(ButtonStyle.Secondary),
+        btnIdioma(idioma),
+      );
+      await member.send({ embeds: [embed], components: [row] }).catch(() => {});
+    }
+  }
 
   await interaction.editReply({
     embeds: [new EmbedBuilder()
