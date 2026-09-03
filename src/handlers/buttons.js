@@ -1,5 +1,6 @@
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { iniciarCompra, entregarProduto } = require('../systems/loja');
+const efi = require('../systems/efi');
 const { fecharTicket, assumirTicket, gerarTranscript } = require('../systems/tickets');
 const { adicionarAoCarrinho, removerDoCarrinho, limparCarrinho, mostrarCarrinho, listarCarrinho, calcularTotal } = require('../systems/carrinho');
 const { solicitarSaque } = require('../systems/afiliados');
@@ -240,7 +241,8 @@ module.exports = async (interaction, client) => {
           return interaction.editReply({ content: '⏳ Pagamento ainda não identificado. Aguarde alguns segundos e tente novamente.' });
         }
       } catch (e) {
-        return interaction.editReply({ content: '❌ Erro ao verificar pagamento. Tente novamente.' });
+        console.error('[VerificarPix]', e.message);
+        return interaction.editReply({ content: `❌ Erro ao verificar pagamento: \`${e.message.slice(0,100)}\`\nTente novamente em instantes.` });
       }
     } else {
       return interaction.editReply({ content: '⏳ Verificação automática ativa. Seu produto será entregue assim que o pagamento for confirmado.' });
