@@ -1023,13 +1023,18 @@ async function handlePainelAdminModals(interaction, client) {
       if (painelIds.length > 0) lojasValidas = JSON.stringify(painelIds);
     }
 
-    const { criarCupom, gerarCodigoCupom } = require('./cupons');
+    const { gerarCodigoCupom } = require('./cupons');
     const codigo = cod || gerarCodigoCupom();
 
-    // Salvar direto no DB com novos campos
+    // Salvar no DB — compatível com banco sem as colunas novas
     const { v4: uuidv4 } = require('uuid');
-    const cupomId = uuidv4();
+    const cupomId    = uuidv4();
     const validadeTs = Math.floor(Date.now() / 1000) + (dias * 86400);
+
+    // Garantir colunas novas existem (migração segura)
+    try { db.exec('ALTER TABLE cupons ADD COLUMN usos_por_usuario INTEGER DEFAULT 1'); } catch {}
+    try { db.exec('ALTER TABLE cupons ADD COLUMN lojas_validas TEXT DEFAULT NULL'); } catch {}
+
     db.prepare(`
       INSERT INTO cupons (id, codigo, tipo, valor, usos_max, usos_por_usuario, validade, lojas_validas, criado_por)
       VALUES (?,?,?,?,?,?,?,?,?)
