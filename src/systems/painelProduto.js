@@ -319,9 +319,9 @@ async function publicarPainel(interaction, estado, client) {
 }
 
 // ─── Montar componentes do painel publicado ───────────────────────────────────
-// ─── Helper: normalizar texto para Discord ────────────────────────────────────
+// ─── Helper: truncar texto para Discord (sem remover chars especiais) ────────
 function sanitizar(str, max = 100) {
-  return (str || '').normalize('NFKD').replace(/[^\x20-\x7E\u00C0-\u024F]/g, '').trim().slice(0, max) || '?';
+  return (str || '').trim().slice(0, max) || '?';
 }
 
 // ─── Montar componentes do painel publicado ───────────────────────────────────
