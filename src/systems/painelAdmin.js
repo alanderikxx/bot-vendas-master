@@ -473,7 +473,7 @@ async function handlePainelAdmin(interaction, client) {
       mRow(new TextInputBuilder().setCustomId('valor').setLabel('Desconto em % (ex: 10 = 10%)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('10')),
       mRow(new TextInputBuilder().setCustomId('usos_por_usuario').setLabel('Limite de usos por usuário').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('1')),
       mRow(new TextInputBuilder().setCustomId('validade').setLabel('Validade em dias').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('30')),
-      mRow(new TextInputBuilder().setCustomId('lojas').setLabel('IDs dos produtos (vazio = todas as lojas)').setStyle(TextInputStyle.Paragraph).setRequired(false).setPlaceholder('Cole os IDs dos produtos separados por vírgula\nEx: a1b2c3d4, e5f6g7h8\n(use /painel listar para ver os IDs)')),
+      mRow(new TextInputBuilder().setCustomId('lojas').setLabel('IDs dos produtos (vazio = todas as lojas)').setStyle(TextInputStyle.Paragraph).setRequired(false).setPlaceholder('IDs separados por vírgula (ex: a1b2c3d4, e5f6g7h8)')),
     );
     return interaction.showModal(modal);
   }
