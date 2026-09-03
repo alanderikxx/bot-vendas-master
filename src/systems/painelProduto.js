@@ -327,8 +327,11 @@ function montarComponentes(variantes, painelId) {
   // Discord limita: label ≤ 100 chars, description ≤ 100 chars, máximo 25 opções por menu
   const variantesVisiveis = variantes.slice(0, 25);
 
-  // Detectar se o painel é de coins (entrega automática — sem estoque_variante)
-  const produto = db.prepare('SELECT nome, tipo FROM produtos WHERE id=(SELECT produto_id FROM paineis_canal WHERE id=?)').get(painelId);
+  // Detectar se é coins via nome do produto (busca direta pelo produto_id das variantes)
+  const produtoId = variantes[0]?.produto_id;
+  const produto = produtoId
+    ? db.prepare('SELECT nome, tipo FROM produtos WHERE id=?').get(produtoId)
+    : db.prepare('SELECT nome, tipo FROM produtos WHERE id=(SELECT produto_id FROM paineis_canal WHERE id=?)').get(painelId);
   const isCoins = produto?.nome?.toLowerCase().includes('coin') || produto?.tipo === 'coins';
 
   const options = variantesVisiveis.map(v => {
@@ -380,6 +383,8 @@ async function atualizarPainelProduto(guild, painelId) {
     const msg = await canal.messages.fetch(painel.mensagem_id).catch(() => null);
     if (!msg) return;
 
+    console.log(`[PainelProduto] Atualizando painel ${painelId.slice(0,8)} — produto: ${produto.nome} — ${variantes.length} variante(s)`);
+
     // ── Pegar embed original para preservar imagem ────────────────────────
     const embedOriginal = msg.embeds[0];
     const imagemOriginal = embedOriginal?.image?.url || embedOriginal?.thumbnail?.url || null;
@@ -397,7 +402,9 @@ async function atualizarPainelProduto(guild, painelId) {
     if (imagemOriginal) embed.setImage(imagemOriginal);
 
     // SEM campos de planos no embed — apenas select menu é atualizado
-    await msg.edit({ embeds: [embed], components: montarComponentes(variantes, painelId) });
+    const components = montarComponentes(variantes, painelId);
+    console.log(`[PainelProduto] Painel ${painelId.slice(0,8)} — ${variantes.length} variante(s), ${components.length} componente(s)`);
+    await msg.edit({ embeds: [embed], components });
   } catch (err) {
     console.error('[PainelProduto] Erro ao atualizar:', err.message);
   }
