@@ -316,7 +316,7 @@ async function pagarComCoins(interaction, pedidoId, client) {
 }
 
 // ─── Compra via variante (painel de produto) ──────────────────────────────────
-async function iniciarCompraVariante(interaction, varianteId, client) {
+async function iniciarCompraVariante(interaction, varianteId, client, cupomCodigo = null) {
   if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
 
   const usuario = Usuarios.garantir(interaction.user.id, interaction.user.username);
@@ -347,11 +347,25 @@ async function iniciarCompraVariante(interaction, varianteId, client) {
   let precoFinal = Number(variante.preco);
   let desconto   = 0;
 
+  // Desconto fidelidade
   const nivelData = config.fidelidade.niveis.find(n => n.nome === (usuario.nivel || 'Bronze'));
   if (nivelData?.desconto > 0) {
     const d = precoFinal * nivelData.desconto / 100;
     desconto += d; precoFinal -= d;
   }
+
+  // Cupom — busca painelId da loja para validar restrição
+  let cupomUsado = null;
+  if (cupomCodigo) {
+    const painel = db.prepare('SELECT id FROM paineis_canal WHERE produto_id=? AND ativo=1 LIMIT 1').get(produto.id);
+    const painelId = painel?.id || null;
+    const { valido, cupom, erro } = Cupons.validar(cupomCodigo, interaction.user.id, precoFinal, painelId);
+    if (!valido) return interaction.editReply({ content: erro });
+    const d = Cupons.calcDesconto(cupom, precoFinal);
+    desconto += d; precoFinal -= d; cupomUsado = cupom;
+  }
+
+  precoFinal = Math.max(0, precoFinal);
 
   let afiliadoId = null, comissaoAfil = 0;
   if (usuario.afiliado_de) {
@@ -364,9 +378,11 @@ async function iniciarCompraVariante(interaction, varianteId, client) {
     usuarioId: interaction.user.id, produtoId: produto.id, quantidade: 1,
     valorUnit: Number(variante.preco), valorTotal: precoFinal, desconto,
     afiliadoId, comissaoAfil, metodoPag: 'pix',
+    cupomUsado: cupomUsado?.codigo || null,
   });
 
   db.prepare('UPDATE pedidos SET nota_fiscal=? WHERE id=?').run(JSON.stringify({ varianteId }), pedidoId);
+  if (cupomUsado) Cupons.usar(cupomUsado.id, interaction.user.id, pedidoId);
 
   // Produto free
   if (precoFinal === 0) {

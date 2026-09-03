@@ -470,10 +470,10 @@ async function handlePainelAdmin(interaction, client) {
     const modal = new ModalBuilder().setCustomId('pam_criar_cupom').setTitle('🎟️ Criar Cupom');
     modal.addComponents(
       mRow(new TextInputBuilder().setCustomId('codigo').setLabel('Código (vazio = automático)').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('PROMO10')),
-      mRow(new TextInputBuilder().setCustomId('tipo').setLabel('Tipo: percentual ou fixo').setStyle(TextInputStyle.Short).setRequired(true).setValue('percentual')),
-      mRow(new TextInputBuilder().setCustomId('valor').setLabel('Valor (% ou R$)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('10')),
-      mRow(new TextInputBuilder().setCustomId('usos').setLabel('Máximo de usos').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('100')),
-      mRow(new TextInputBuilder().setCustomId('validade').setLabel('Validade em dias').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('30')),
+      mRow(new TextInputBuilder().setCustomId('valor').setLabel('Desconto em % (ex: 10 = 10%)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('10')),
+      mRow(new TextInputBuilder().setCustomId('usos_por_usuario').setLabel('Limite de usos por usuário').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('1')),
+      mRow(new TextInputBuilder().setCustomId('validade').setLabel('Validade em dias').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('30')),
+      mRow(new TextInputBuilder().setCustomId('lojas').setLabel('IDs dos produtos (vazio = todas as lojas)').setStyle(TextInputStyle.Paragraph).setRequired(false).setPlaceholder('Cole os IDs dos produtos separados por vírgula\nEx: a1b2c3d4, e5f6g7h8\n(use /painel listar para ver os IDs)')),
     );
     return interaction.showModal(modal);
   }
@@ -484,9 +484,17 @@ async function handlePainelAdmin(interaction, client) {
     if (!cupons.length) return interaction.editReply({ content: '🎟️ Nenhum cupom ativo.' });
     const embed = new EmbedBuilder().setColor(config.colors.purple).setTitle('🎟️ Cupons Ativos').setTimestamp();
     for (const c of cupons) {
-      const val = c.tipo === 'percentual' ? `${c.valor}%` : `R$ ${Number(c.valor).toFixed(2)}`;
-      const exp = c.validade ? new Date(c.validade*1000).toLocaleDateString('pt-BR') : '∞';
-      embed.addFields({ name: `🎟️ ${c.codigo}`, value: `${val} • ${c.usos_atual}/${c.usos_max} usos • Exp: ${exp}`, inline: true });
+      const val   = c.tipo === 'percentual' ? `${c.valor}%` : `R$ ${Number(c.valor).toFixed(2)}`;
+      const exp   = c.validade ? new Date(c.validade*1000).toLocaleDateString('pt-BR') : '∞';
+      const lim   = c.usos_por_usuario ? `${c.usos_por_usuario}x/user` : '1x/user';
+      let lojas   = 'Todas as lojas';
+      if (c.lojas_validas) {
+        try {
+          const arr = JSON.parse(c.lojas_validas);
+          lojas = `${arr.length} loja(s) específica(s)`;
+        } catch {}
+      }
+      embed.addFields({ name: `🎟️ ${c.codigo}`, value: `**${val}** • ${lim} • Exp: ${exp}\n🏪 ${lojas}`, inline: false });
     }
     return interaction.editReply({ embeds: [embed] });
   }
@@ -990,16 +998,54 @@ async function handlePainelAdminModals(interaction, client) {
 
   if (id === 'pam_criar_cupom') {
     await interaction.deferReply({ ephemeral: true });
-    const cod   = interaction.fields.getTextInputValue('codigo').trim();
-    const tipo  = interaction.fields.getTextInputValue('tipo').trim().toLowerCase() === 'fixo' ? 'fixo' : 'percentual';
-    const valor = parseFloat(interaction.fields.getTextInputValue('valor').trim().replace(',','.'));
-    const usos  = parseInt(interaction.fields.getTextInputValue('usos').trim()) || 100;
-    const dias  = parseInt(interaction.fields.getTextInputValue('validade').trim()) || 30;
-    if (isNaN(valor)) return interaction.editReply({ content: '❌ Valor inválido.' });
+    const cod            = interaction.fields.getTextInputValue('codigo').trim();
+    const valor          = parseFloat(interaction.fields.getTextInputValue('valor').trim().replace(',','.'));
+    const usosPorUsuario = parseInt(interaction.fields.getTextInputValue('usos_por_usuario').trim()) || 1;
+    const dias           = parseInt(interaction.fields.getTextInputValue('validade').trim()) || 30;
+    const lojasRaw       = interaction.fields.getTextInputValue('lojas').trim();
+
+    if (isNaN(valor) || valor <= 0 || valor > 100) return interaction.editReply({ content: '❌ Percentual inválido. Use um número entre 1 e 100.' });
+
+    // Processar lojas: buscar painelId pelo produto_id parcial
+    let lojasValidas = null;
+    if (lojasRaw) {
+      const ids = lojasRaw.split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
+      const painelIds = [];
+      for (const id of ids) {
+        const painel = db.prepare("SELECT id FROM paineis_canal WHERE produto_id LIKE ? AND ativo=1").get(`${id}%`);
+        if (painel) painelIds.push(painel.id);
+        else {
+          // Tentar como painelId diretamente
+          const p2 = db.prepare("SELECT id FROM paineis_canal WHERE id LIKE ? AND ativo=1").get(`${id}%`);
+          if (p2) painelIds.push(p2.id);
+        }
+      }
+      if (painelIds.length > 0) lojasValidas = JSON.stringify(painelIds);
+    }
+
     const { criarCupom, gerarCodigoCupom } = require('./cupons');
     const codigo = cod || gerarCodigoCupom();
-    criarCupom({ codigo, tipo, valor, usosMax: usos, validadeDias: dias, criadoPor: interaction.user.id });
-    return interaction.editReply({ content: `✅ Cupom **\`${codigo}\`** criado! ${tipo==='percentual'?`${valor}%`:`R$ ${valor}`} • ${usos} usos • ${dias} dias` });
+
+    // Salvar direto no DB com novos campos
+    const { v4: uuidv4 } = require('uuid');
+    const cupomId = uuidv4();
+    const validadeTs = Math.floor(Date.now() / 1000) + (dias * 86400);
+    db.prepare(`
+      INSERT INTO cupons (id, codigo, tipo, valor, usos_max, usos_por_usuario, validade, lojas_validas, criado_por)
+      VALUES (?,?,?,?,?,?,?,?,?)
+    `).run(cupomId, codigo.toUpperCase(), 'percentual', valor, 9999, usosPorUsuario, validadeTs, lojasValidas, interaction.user.id);
+
+    const lojasMsg = lojasValidas
+      ? `\n🏪 Válido em **${JSON.parse(lojasValidas).length}** loja(s) específica(s)`
+      : '\n🏪 Válido em **todas as lojas**';
+
+    return interaction.editReply({ content: [
+      `✅ Cupom **\`${codigo.toUpperCase()}\`** criado!`,
+      `💰 Desconto: **${valor}%**`,
+      `👤 Limite por usuário: **${usosPorUsuario}x**`,
+      `📅 Validade: **${dias} dias**`,
+      lojasMsg,
+    ].join('\n') });
   }
 
   if (id === 'pam_buscar_usuario') {

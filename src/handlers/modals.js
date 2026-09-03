@@ -83,6 +83,65 @@ module.exports = async (interaction, client) => {
     await iniciarCompra(interaction, produtoId, cupom || null);
   }
 
+  // ── Modal Cupom no Ticket ─────────────────────────────────────────────────
+  else if (id.startsWith('modal_cupom_')) {
+    await interaction.deferReply({ ephemeral: true });
+    const pedidoId = id.replace('modal_cupom_', '');
+    const codigo   = interaction.fields.getTextInputValue('codigo').trim().toUpperCase();
+
+    const { Pedidos, Produtos, db } = require('../database/database');
+    const { Cupons } = require('../database/database');
+    const pedido  = Pedidos.get(pedidoId);
+    if (!pedido) return interaction.editReply({ content: '❌ Pedido não encontrado.' });
+    if (pedido.usuario_id !== interaction.user.id) return interaction.editReply({ content: '❌ Este pedido não é seu.' });
+    if (pedido.status !== 'pendente') return interaction.editReply({ content: '⚠️ Pedido não está mais pendente.' });
+    if (pedido.cupom_usado) return interaction.editReply({ content: `⚠️ Cupom **${pedido.cupom_usado}** já aplicado.` });
+
+    // Buscar painelId da loja para validar restrição
+    const painel   = db.prepare('SELECT id FROM paineis_canal WHERE produto_id=? AND ativo=1 LIMIT 1').get(pedido.produto_id);
+    const painelId = painel?.id || null;
+
+    const { valido, cupom, erro } = Cupons.validar(codigo, interaction.user.id, pedido.valor_total, painelId);
+    if (!valido) return interaction.editReply({ content: erro });
+
+    const desconto    = Cupons.calcDesconto(cupom, pedido.valor_total);
+    const novoTotal   = Math.max(0, pedido.valor_total - desconto);
+
+    db.prepare('UPDATE pedidos SET valor_total=?, desconto=desconto+?, cupom_usado=? WHERE id=?')
+      .run(novoTotal, desconto, codigo, pedidoId);
+    Cupons.usar(cupom.id, interaction.user.id, pedidoId);
+
+    const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+    const coins     = db.prepare('SELECT coins FROM usuarios WHERE discord_id=?').get(interaction.user.id)?.coins || 0;
+    const podeCoins = (coins * 0.01) >= novoTotal;
+
+    const rowPag = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`gerar_pix_${pedidoId}`).setLabel('💠 Pagar via PIX').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`pagar_coins_${pedidoId}`).setLabel('🪙 Pagar com Coins').setStyle(ButtonStyle.Primary).setDisabled(!podeCoins),
+      new ButtonBuilder().setCustomId(`alterar_qtd_${pedidoId}`).setLabel('🔢 Quantidade').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`cancelar_pedido_${pedidoId}`).setLabel('❌ Cancelar').setStyle(ButtonStyle.Danger),
+    );
+
+    await interaction.editReply({
+      embeds: [new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('🎟️ Cupom Aplicado!')
+        .addFields(
+          { name: '🎟️ Cupom',      value: `**${codigo}**`,                         inline: true },
+          { name: '💰 Desconto',   value: `${cupom.valor}% (−R$ ${desconto.toFixed(2)})`, inline: true },
+          { name: '💵 Novo Total', value: `**R$ ${novoTotal.toFixed(2)}**`,         inline: true },
+        )
+        .setTimestamp()],
+    });
+
+    if (interaction.channel) {
+      await interaction.channel.send({
+        content: `<@${interaction.user.id}> 🎟️ Cupom **${codigo}** aplicado! Novo total: **R$ ${novoTotal.toFixed(2)}**`,
+        components: [rowPag],
+      }).catch(() => {});
+    }
+  }
+
   // ── Modal Boleto ──────────────────────────────────────────────────────────
   else if (id.startsWith('modal_boleto_')) {
     const produtoId = id.replace('modal_boleto_', '');

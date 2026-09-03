@@ -437,6 +437,9 @@ async function init() {
   try { db.exec('ALTER TABLE usuarios ADD COLUMN coins INTEGER DEFAULT 0'); } catch {}
   // Adicionar coluna idioma se não existir
   try { db.exec("ALTER TABLE usuarios ADD COLUMN idioma TEXT DEFAULT 'pt-BR'"); } catch {}
+  // Migração cupons — novas colunas
+  try { db.exec('ALTER TABLE cupons ADD COLUMN usos_por_usuario INTEGER DEFAULT 1'); } catch {}
+  try { db.exec('ALTER TABLE cupons ADD COLUMN lojas_validas TEXT DEFAULT NULL'); } catch {}
 
   // Configurações padrão
   const cfgStmt = db.prepare(`INSERT OR IGNORE INTO configuracoes (chave, valor, tipo, descricao) VALUES (?, ?, ?, ?)`);
@@ -585,14 +588,30 @@ const Pedidos = {
 
 const Cupons = {
   get: (codigo) => db.prepare('SELECT * FROM cupons WHERE codigo = ? AND ativo = 1').get(codigo.toUpperCase()),
-  validar: (codigo, usuarioId, valor) => {
+  validar: (codigo, usuarioId, valor, painelId = null) => {
     const c = Cupons.get(codigo);
     if (!c) return { valido: false, erro: '❌ Cupom inválido ou inexistente.' };
     if (c.usos_atual >= c.usos_max) return { valido: false, erro: '❌ Cupom esgotado.' };
     if (c.validade && c.validade < Math.floor(Date.now() / 1000)) return { valido: false, erro: '❌ Cupom expirado.' };
-    if (valor < c.min_compra) return { valido: false, erro: `❌ Valor mínimo para este cupom: R$ ${c.min_compra.toFixed(2)}` };
-    const jaUsou = db.prepare('SELECT 1 FROM cupons_usos WHERE cupom_id = ? AND usuario_id = ?').get(c.id, usuarioId);
-    if (jaUsou) return { valido: false, erro: '❌ Você já usou este cupom.' };
+    if (valor < c.min_compra) return { valido: false, erro: `❌ Valor mínimo para este cupom: R$ ${Number(c.min_compra).toFixed(2)}` };
+
+    // Verificar limite de usos por usuário
+    const usosDoUsuario = db.prepare('SELECT COUNT(*) as c FROM cupons_usos WHERE cupom_id = ? AND usuario_id = ?').get(c.id, usuarioId)?.c || 0;
+    const limiteUsos = c.usos_por_usuario ?? 1;
+    if (usosDoUsuario >= limiteUsos) {
+      return { valido: false, erro: `❌ Você já usou este cupom ${usosDoUsuario}x (limite: ${limiteUsos}x).` };
+    }
+
+    // Verificar lojas válidas (painelId)
+    if (c.lojas_validas) {
+      try {
+        const lojas = JSON.parse(c.lojas_validas);
+        if (Array.isArray(lojas) && lojas.length > 0 && painelId && !lojas.includes(painelId)) {
+          return { valido: false, erro: '❌ Este cupom não é válido para este produto.' };
+        }
+      } catch {}
+    }
+
     return { valido: true, cupom: c };
   },
   calcDesconto: (cupom, valor) => {
@@ -602,7 +621,13 @@ const Cupons = {
   },
   usar: (cupomId, usuarioId, pedidoId) => {
     const { v4: uuidv4 } = require('uuid');
-    db.prepare('INSERT INTO cupons_usos (cupom_id, usuario_id, pedido_id) VALUES (?,?,?)').run(cupomId, usuarioId, pedidoId);
+    // Inserir com id único para suportar múltiplos usos por usuário
+    try {
+      db.prepare('INSERT INTO cupons_usos (cupom_id, usuario_id, pedido_id) VALUES (?,?,?)').run(cupomId, usuarioId, pedidoId);
+    } catch {
+      // PRIMARY KEY conflita em uso único — tenta com id separado se a tabela tiver id
+      db.prepare('INSERT OR IGNORE INTO cupons_usos (cupom_id, usuario_id, pedido_id) VALUES (?,?,?)').run(cupomId, usuarioId, pedidoId);
+    }
     db.prepare('UPDATE cupons SET usos_atual = usos_atual + 1 WHERE id = ?').run(cupomId);
   },
 };

@@ -173,5 +173,73 @@ module.exports = function iniciarScheduler(client) {
     }
   });
 
-  console.log('⏰ Scheduler iniciado com sucesso!');
+  // ── KPI: Ranking de Coins — atualiza a cada 2s no canal fixo ────────────────
+  const CANAL_KPI_COINS = '1544885444578254919';
+  let kpiMsgId = null;
+
+  async function atualizarKpiCoins() {
+    try {
+      const guild = client.guilds.cache.first();
+      if (!guild) return;
+      const canal = guild.channels.cache.get(CANAL_KPI_COINS);
+      if (!canal) return;
+
+      const top = db.prepare(`
+        SELECT nome, discord_id, coins
+        FROM usuarios
+        WHERE coins > 0
+        ORDER BY coins DESC
+        LIMIT 25
+      `).all();
+
+      const medals = ['🥇','🥈','🥉'];
+      const linhas = top.map((u, i) => {
+        const pos    = medals[i] || `\`${String(i+1).padStart(2,' ')}.\``;
+        const nome   = (u.nome || 'Desconhecido').slice(0, 20);
+        const coins  = Number(u.coins).toLocaleString('pt-BR');
+        const reais  = `R$ ${(Number(u.coins) * 0.01).toFixed(2)}`;
+        return `${pos} **${nome}** — 🪙 ${coins} *(${reais})*`;
+      });
+
+      const totalCoins = db.prepare("SELECT COALESCE(SUM(coins),0) as t FROM usuarios").get().t;
+
+      const embed = new EmbedBuilder()
+        .setColor(0xFFD700)
+        .setTitle('🏆 Ranking de Coins')
+        .setDescription(linhas.length ? linhas.join('\n') : '*Nenhum usuário com coins ainda.*')
+        .addFields({
+          name: '📊 Estatísticas',
+          value: `💰 Total em circulação: **${Number(totalCoins).toLocaleString('pt-BR')} coins** (R$ ${(Number(totalCoins)*0.01).toFixed(2)})`,
+          inline: false,
+        })
+        .setFooter({ text: `🔄 Atualizado em tempo real • ${new Date().toLocaleTimeString('pt-BR')}` })
+        .setTimestamp();
+
+      if (kpiMsgId) {
+        const msg = await canal.messages.fetch(kpiMsgId).catch(() => null);
+        if (msg) {
+          await msg.edit({ embeds: [embed] }).catch(() => { kpiMsgId = null; });
+          return;
+        }
+      }
+
+      // Deletar msgs antigas do bot e criar nova
+      const msgs = await canal.messages.fetch({ limit: 10 }).catch(() => null);
+      if (msgs) {
+        for (const [, m] of msgs.filter(m => m.author.id === guild.client.user.id)) {
+          await m.delete().catch(() => {});
+        }
+      }
+      const nova = await canal.send({ embeds: [embed] });
+      kpiMsgId = nova.id;
+    } catch {}
+  }
+
+  // Primeira execução imediata, depois a cada 2s
+  setTimeout(async () => {
+    await atualizarKpiCoins();
+    setInterval(atualizarKpiCoins, 2000);
+  }, 5000);
 };
+
+  console.log('⏰ Scheduler iniciado com sucesso!');

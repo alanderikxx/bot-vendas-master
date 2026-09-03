@@ -199,6 +199,32 @@ module.exports = async (interaction, client) => {
     }
   }
 
+  // ── Aplicar cupom no pedido ───────────────────────────────────────────────────
+  if (id.startsWith('aplicar_cupom_')) {
+    const pedidoId = id.replace('aplicar_cupom_', '');
+    const pedido   = Pedidos.get(pedidoId);
+    if (!pedido) return interaction.reply({ content: '❌ Pedido não encontrado.', ephemeral: true });
+    if (pedido.usuario_id !== interaction.user.id) return interaction.reply({ content: '❌ Este pedido não é seu.', ephemeral: true });
+    if (pedido.status !== 'pendente') return interaction.reply({ content: '⚠️ Pedido não está mais pendente.', ephemeral: true });
+    if (pedido.cupom_usado) return interaction.reply({ content: `⚠️ Cupom **${pedido.cupom_usado}** já aplicado neste pedido.`, ephemeral: true });
+
+    const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+    const modal = new ModalBuilder()
+      .setCustomId(`modal_cupom_${pedidoId}`)
+      .setTitle('🎟️ Aplicar Cupom');
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('codigo')
+          .setLabel('Código do cupom')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setPlaceholder('Ex: PROMO10'),
+      ),
+    );
+    return interaction.showModal(modal);
+  }
+
   // ── Alterar quantidade do pedido ─────────────────────────────────────────────
   if (id.startsWith('alterar_qtd_')) {
     const pedidoId = id.replace('alterar_qtd_', '');
