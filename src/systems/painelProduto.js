@@ -418,7 +418,7 @@ async function atualizarPainelProduto(guild, painelId) {
       .setFooter({ text: 'Máximo Store • Selecione um plano para comprar' });
 
     console.log(`[PainelProduto] Enviando edit — ${components.length} componente(s)...`);
-    await msg.edit({ embeds: [embed], components });
+    await msg.edit({ embeds: [embed], components, attachments: [] });
     console.log(`[PainelProduto] Edit OK ✅`);
   } catch (err) {
     console.error('[PainelProduto] Erro ao atualizar:', err.message);
