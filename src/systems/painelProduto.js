@@ -370,12 +370,23 @@ async function atualizarPainelProduto(guild, painelId) {
     const msg = await canal.messages.fetch(painel.mensagem_id);
 
     const cor   = parseInt(painel.cor || 'FF6B6B', 16);
-    const embed = new EmbedBuilder()
-      .setColor(cor)
-      .setTitle(`🛍️ ${painel.titulo || produto.nome}`)
-      .setDescription(painel.descricao || 'Selecione um plano abaixo para comprar.')
-      .setTimestamp()
-      .setFooter({ text: 'Máximo Store • Selecione um plano para comprar' });
+    let embed;
+    try {
+      embed = new EmbedBuilder()
+        .setColor(cor)
+        .setTitle(`🛍️ ${painel.titulo || produto.nome}`)
+        .setDescription(painel.descricao || 'Selecione um plano abaixo para comprar.')
+        .setTimestamp()
+        .setFooter({ text: 'Máximo Store • Selecione um plano para comprar' });
+    } catch (embedErr) {
+      console.error(`[PainelProduto] Erro no embed — titulo="${painel.titulo}" desc="${(painel.descricao||'').slice(0,50)}":`, embedErr.message);
+      // Fallback com embed mínimo
+      embed = new EmbedBuilder()
+        .setColor(cor)
+        .setTitle('🛍️ Produto')
+        .setDescription('Selecione um plano abaixo para comprar.')
+        .setTimestamp();
+    }
 
     // Imagem: URL salva no banco (sempre válida) ou URL externa do embed original
     const imagemBanco = painel.imagem_url || null;
