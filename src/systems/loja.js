@@ -435,32 +435,49 @@ async function entregarProduto(pedido, client) {
       let notaFiscal = null;
       try { notaFiscal = pedido.nota_fiscal ? JSON.parse(pedido.nota_fiscal) : null; } catch {}
       const varianteId = notaFiscal?.varianteId;
+      const qtd = Math.max(1, parseInt(pedido.quantidade) || 1);
 
       if (varianteId) {
         const { pegarItemVariante } = require('./painelProduto');
-        conteudo = pegarItemVariante(varianteId, pedido.usuario_id, pedido.id);
+        // Pegar N itens conforme a quantidade do pedido
+        const itens = [];
+        for (let i = 0; i < qtd; i++) {
+          const item = pegarItemVariante(varianteId, pedido.usuario_id, pedido.id);
+          if (item) itens.push(item);
+          else break; // sem mais estoque
+        }
+        conteudo = itens.length > 0 ? itens.join('\n') : null;
+        if (!conteudo && itens.length === 0) {
+          conteudo = '⚠️ Entrega manual — nossa equipe entrará em contato via ticket.';
+        }
       }
 
       // Fallback estoque global
       if (!conteudo) {
-        const item = db.prepare('SELECT * FROM estoque_digital WHERE produto_id=? AND usado=0 LIMIT 1').get(produto.id);
-        if (item) {
-          db.prepare("UPDATE estoque_digital SET usado=1,usado_por=?,usado_em=strftime('%s','now'),pedido_id=? WHERE id=?")
-            .run(pedido.usuario_id, pedido.id, item.id);
-          conteudo = item.conteudo;
+        const itens = [];
+        for (let i = 0; i < qtd; i++) {
+          const item = db.prepare('SELECT * FROM estoque_digital WHERE produto_id=? AND usado=0 LIMIT 1').get(produto.id);
+          if (item) {
+            db.prepare("UPDATE estoque_digital SET usado=1,usado_por=?,usado_em=strftime('%s','now'),pedido_id=? WHERE id=?")
+              .run(pedido.usuario_id, pedido.id, item.id);
+            itens.push(item.conteudo);
+          } else break;
+        }
+        if (itens.length > 0) {
+          conteudo = itens.join('\n');
           const disponivel = db.prepare('SELECT COUNT(*) as c FROM estoque_digital WHERE produto_id=? AND usado=0').get(produto.id).c;
-          db.prepare('UPDATE produtos SET estoque=?,vendas=vendas+1 WHERE id=?').run(disponivel, produto.id);
+          db.prepare('UPDATE produtos SET estoque=?,vendas=vendas+? WHERE id=?').run(disponivel, itens.length, produto.id);
           if (disponivel <= 5) await log('estoque_baixo', { produto: produto.nome, descricao: `Estoque baixo: ${produto.nome} — ${disponivel}` });
         } else {
-          // Sem estoque digital — marcar como entregue com aviso (staff entrega manual)
           conteudo = '⚠️ Entrega manual — nossa equipe entrará em contato via ticket.';
           db.prepare('UPDATE produtos SET vendas=vendas+1 WHERE id=?').run(produto.id);
         }
       } else {
-        db.prepare('UPDATE produtos SET vendas=vendas+1 WHERE id=?').run(produto.id);
+        db.prepare('UPDATE produtos SET vendas=vendas+? WHERE id=?').run(qtd, produto.id);
       }
     } else {
-      if (produto.estoque > 0) db.prepare('UPDATE produtos SET estoque=estoque-1,vendas=vendas+1 WHERE id=?').run(produto.id);
+      const qtd = Math.max(1, parseInt(pedido.quantidade) || 1);
+      if (produto.estoque > 0) db.prepare('UPDATE produtos SET estoque=estoque-?,vendas=vendas+? WHERE id=?').run(qtd, qtd, produto.id);
       conteudo = 'Produto físico — entrega combinada via ticket.';
     }
 
@@ -518,11 +535,20 @@ async function entregarProduto(pedido, client) {
       .setFooter({ text: t('delivery_footer', idioma) });
 
     if (conteudo && conteudo !== '⚠️ Entrega manual — nossa equipe entrará em contato via ticket.') {
-      embed.addFields({
-        name:  t('delivery_your_product', idioma),
-        value: `\`\`\`\n${conteudo}\n\`\`\``,
-        inline: false,
-      });
+      // Dividir em chunks de 900 chars para não ultrapassar o limite do Discord
+      const chunks = [];
+      let resto = conteudo;
+      while (resto.length > 0) {
+        chunks.push(resto.slice(0, 900));
+        resto = resto.slice(900);
+      }
+      for (let i = 0; i < chunks.length; i++) {
+        embed.addFields({
+          name:  i === 0 ? t('delivery_your_product', idioma) : `📦 Continuação (${i + 1})`,
+          value: `\`\`\`\n${chunks[i]}\n\`\`\``,
+          inline: false,
+        });
+      }
     } else if (conteudo) {
       embed.addFields({
         name:  '⚠️ Entrega',
