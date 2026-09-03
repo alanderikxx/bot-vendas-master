@@ -405,18 +405,22 @@ async function atualizarPainelProduto(guild, painelId) {
     const components = [];
     if (options.length) {
       try {
-        const menu = new StringSelectMenuBuilder()
-          .setCustomId(`painel_selecionar_${painelId}`)
-          .setPlaceholder('Selecione um plano');
-        for (const opt of options) {
-          try {
-            menu.addOptions([opt]);
-            console.log(`  [opt OK] ${opt.label}`);
-          } catch (optErr) {
-            console.error(`  [opt FAIL] label="${opt.label}" value="${opt.value}" err=${optErr.message}`);
-          }
-        }
-        components.push(new ActionRowBuilder().addComponents(menu));
+        // Construir o componente via JSON direto para evitar validação do shapeshift
+        const menuJson = {
+          type: 3, // STRING_SELECT
+          custom_id: `painel_selecionar_${painelId}`,
+          placeholder: 'Selecione um plano',
+          options: options.map(o => ({
+            label:       o.label,
+            description: o.description,
+            value:       o.value,
+          })),
+          min_values: 1,
+          max_values: 1,
+        };
+        const rowJson = { type: 1, components: [menuJson] };
+        components.push(rowJson);
+        console.log(`[PainelProduto] Menu montado via JSON — ${options.length} option(s)`);
       } catch (menuErr) {
         console.error('[PainelProduto] Erro no menu:', menuErr.message);
       }
