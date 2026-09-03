@@ -825,6 +825,7 @@ async function handlePainelAdmin(interaction, client) {
 // ─── Handler de modais pam_* ──────────────────────────────────────────────────
 async function handlePainelAdminModals(interaction, client) {
   const id = interaction.customId;
+  try {
 
   if (id === 'pam_criar_carrinho') {
     await interaction.deferReply({ ephemeral: true });
@@ -1272,6 +1273,11 @@ async function handlePainelAdminModals(interaction, client) {
     const motivo    = interaction.fields.getTextInputValue('motivo').trim();
     Usuarios.bloquear(discordId, motivo);
     return interaction.editReply({ content: `🚫 <@${discordId}> bloqueado com sucesso.\n**Motivo:** ${motivo}` });
+  }
+  } catch (err) {
+    console.error('[PainelAdminModals] Erro:', err.message, '| modal:', interaction.customId);
+    const responder = interaction.deferred ? 'editReply' : 'reply';
+    return interaction[responder]({ content: `❌ Erro: \`${err.message.slice(0, 200)}\``, ephemeral: true }).catch(() => {});
   }
 }
 
