@@ -385,9 +385,17 @@ async function atualizarPainelProduto(guild, painelId) {
 
     console.log(`[PainelProduto] Atualizando painel ${painelId.slice(0,8)} — produto: ${produto.nome} — ${variantes.length} variante(s)`);
 
-    // ── Pegar embed original para preservar imagem ────────────────────────
-    const embedOriginal = msg.embeds[0];
+    // ── Imagem: usar URL salva no banco ou URL externa do embed original ──
+    const embedOriginal  = msg.embeds[0];
     const imagemOriginal = embedOriginal?.image?.url || embedOriginal?.thumbnail?.url || null;
+
+    // Prioridade: 1) URL salva no banco (sempre válida), 2) URL externa (não CDN attachment)
+    const imagemBanco = painel.imagem_url || null;
+    const imagemCDN   = imagemOriginal &&
+      !imagemOriginal.includes('cdn.discordapp.com/attachments') &&
+      !imagemOriginal.includes('media.discordapp.net/attachments')
+      ? imagemOriginal : null;
+    const imagemValida = imagemBanco || imagemCDN;
 
     const cor   = parseInt(painel.cor || 'FF6B6B', 16);
     const embed = new EmbedBuilder()
@@ -397,9 +405,7 @@ async function atualizarPainelProduto(guild, painelId) {
       .setFooter({ text: 'Máximo Store • Selecione um plano para comprar' });
 
     if (painel.descricao) embed.setDescription(painel.descricao);
-
-    // Preserva a imagem como estava na mensagem original (URL do CDN do Discord)
-    if (imagemOriginal) embed.setImage(imagemOriginal);
+    if (imagemValida) embed.setImage(imagemValida);
 
     // SEM campos de planos no embed — apenas select menu é atualizado
     const components = montarComponentes(variantes, painelId);
