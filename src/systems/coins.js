@@ -155,7 +155,9 @@ async function entregarCoins(pedido, client) {
     const nota = pedido.nota_fiscal ? JSON.parse(pedido.nota_fiscal) : null;
     if (nota?.tipo !== 'coins') return false;
 
-    const quantidade = nota.quantidade;
+    const quantidade = nota.quantidade || nota.qtdCoins || 0;
+    if (!quantidade) return false;
+
     const novo       = addCoins(pedido.usuario_id, quantidade, `Compra de ${quantidade} coins via PIX`);
 
     db.prepare("UPDATE pedidos SET status='entregue', entregue_em=strftime('%s','now') WHERE id=?").run(pedido.id);

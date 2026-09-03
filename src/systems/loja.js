@@ -331,16 +331,21 @@ async function iniciarCompraVariante(interaction, varianteId, client) {
   const produto = Produtos.get(variante.produto_id);
   if (!produto || !produto.ativo) return interaction.editReply({ content: '❌ Produto indisponível.' });
 
-  // Verificar estoque — baseado nos itens digitais reais
-  const digital = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(varianteId);
-  if (digital.c === 0) {
-    return interaction.editReply({
-      embeds: [new EmbedBuilder()
-        .setColor(config.colors.error)
-        .setTitle('❌ Sem Estoque')
-        .setDescription(`O plano **${variante.nome}** está sem estoque no momento.\nNovos itens serão adicionados em breve.`)
-        .setTimestamp()],
-    });
+  // Detectar se é produto de coins (entrega automática — sem estoque_variante)
+  const isCoins = produto.nome.toLowerCase().includes('coin') || produto.tipo === 'coins';
+
+  // Verificar estoque — apenas se não for coins
+  if (!isCoins) {
+    const digital = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(varianteId);
+    if (digital.c === 0) {
+      return interaction.editReply({
+        embeds: [new EmbedBuilder()
+          .setColor(config.colors.error)
+          .setTitle('❌ Sem Estoque')
+          .setDescription(`O plano **${variante.nome}** está sem estoque no momento.\nNovos itens serão adicionados em breve.`)
+          .setTimestamp()],
+      });
+    }
   }
 
   let precoFinal = Number(variante.preco);
@@ -364,7 +369,18 @@ async function iniciarCompraVariante(interaction, varianteId, client) {
     valorUnit: Number(variante.preco), valorTotal: precoFinal, desconto,
     afiliadoId, comissaoAfil, metodoPag: 'pix',
   });
-  db.prepare('UPDATE pedidos SET nota_fiscal=? WHERE id=?').run(JSON.stringify({ varianteId }), pedidoId);
+
+  // Marcar nota fiscal com tipo correto
+  if (isCoins) {
+    // Extrair quantidade de coins do nome da variante (ex: "100 coins", "500 COINS")
+    const match = variante.nome.match(/(\d[\d.,]*)/);
+    const qtdCoins = match ? parseInt(match[1].replace(/[.,]/g, '')) : 0;
+    db.prepare('UPDATE pedidos SET nota_fiscal=? WHERE id=?').run(
+      JSON.stringify({ tipo: 'coins', varianteId, qtdCoins }), pedidoId,
+    );
+  } else {
+    db.prepare('UPDATE pedidos SET nota_fiscal=? WHERE id=?').run(JSON.stringify({ varianteId }), pedidoId);
+  }
 
   // Produto free
   if (precoFinal === 0) {
