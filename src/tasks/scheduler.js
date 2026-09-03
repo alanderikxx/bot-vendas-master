@@ -192,27 +192,33 @@ module.exports = function iniciarScheduler(client) {
         LIMIT 25
       `).all();
 
-      const medals = ['🥇','🥈','🥉'];
-      const linhas = top.map((u, i) => {
-        const pos    = medals[i] || `\`${String(i+1).padStart(2,' ')}.\``;
-        const nome   = (u.nome || 'Desconhecido').slice(0, 20);
-        const coins  = Number(u.coins).toLocaleString('pt-BR');
-        const reais  = `R$ ${(Number(u.coins) * 0.01).toFixed(2)}`;
-        return `${pos} **${nome}** — 🪙 ${coins} *(${reais})*`;
-      });
+      const totalCoins    = Number(db.prepare("SELECT COALESCE(SUM(coins),0) as t FROM usuarios").get().t);
+      const totalUsuarios = db.prepare("SELECT COUNT(*) as c FROM usuarios WHERE coins > 0").get().c;
+      const agora = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 
-      const totalCoins = db.prepare("SELECT COALESCE(SUM(coins),0) as t FROM usuarios").get().t;
+      const posEmoji = ['🥇','🥈','🥉'];
+      const linhas = top.map((u, i) => {
+        const pos   = i < 3 ? posEmoji[i] : `\`${String(i + 1).padStart(2, ' ')}.\``;
+        const coins = Number(u.coins).toLocaleString('pt-BR');
+        const reais = `R$\u00a0${(Number(u.coins) * 0.01).toFixed(2)}`;
+        const barra = gerarBarra(Number(u.coins), Number(top[0].coins));
+        return `${pos} <@${u.discord_id}>\n   ${barra} **${coins}** 🪙 *(${reais})*`;
+      });
 
       const embed = new EmbedBuilder()
         .setColor(0xFFD700)
-        .setTitle('🏆 Ranking de Coins')
-        .setDescription(linhas.length ? linhas.join('\n') : '*Nenhum usuário com coins ainda.*')
-        .addFields({
-          name: '📊 Estatísticas',
-          value: `💰 Total em circulação: **${Number(totalCoins).toLocaleString('pt-BR')} coins** (R$ ${(Number(totalCoins)*0.01).toFixed(2)})`,
-          inline: false,
-        })
-        .setFooter({ text: `🔄 Atualizado em tempo real • ${new Date().toLocaleTimeString('pt-BR')}` })
+        .setTitle('🏆 Ranking de Coins — Máximo Store')
+        .setDescription(
+          linhas.length
+            ? linhas.join('\n\n')
+            : '*Nenhum usuário com coins ainda.*'
+        )
+        .addFields(
+          { name: '💰 Total em circulação', value: `**${totalCoins.toLocaleString('pt-BR')} coins**\n≈ R$ ${(totalCoins * 0.01).toFixed(2)}`, inline: true },
+          { name: '👥 Usuários com coins',  value: `**${totalUsuarios}**`,                                                                      inline: true },
+          { name: '🥇 Líder',              value: top.length ? `<@${top[0].discord_id}> — **${Number(top[0].coins).toLocaleString('pt-BR')}** 🪙` : '—', inline: true },
+        )
+        .setFooter({ text: `🔄 Atualizado às ${agora} • 100 coins = R$ 1,00` })
         .setTimestamp();
 
       if (kpiMsgId) {
@@ -233,6 +239,12 @@ module.exports = function iniciarScheduler(client) {
       const nova = await canal.send({ embeds: [embed] });
       kpiMsgId = nova.id;
     } catch {}
+  }
+
+  function gerarBarra(valor, maximo, tamanho = 8) {
+    if (!maximo) return '░'.repeat(tamanho);
+    const preenchido = Math.round((valor / maximo) * tamanho);
+    return '█'.repeat(preenchido) + '░'.repeat(tamanho - preenchido);
   }
 
   // Primeira execução imediata, depois a cada 2s
