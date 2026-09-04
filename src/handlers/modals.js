@@ -12,6 +12,12 @@ const _webhookAvaliacoes = new WebhookClient({ url: 'https://discord.com/api/web
 module.exports = async (interaction, client) => {
   const id = interaction.customId;
 
+  // ── Modal quantidade na tela de confirmação ──────────────────────────────
+  if (id.startsWith('modal_qtd_confirm_')) {
+    const handler = require('../handlers/painelProdutoHandler');
+    return handler(interaction, client);
+  }
+
   // ── Modal Saque de Coins ──────────────────────────────────────────────────
   if (id === 'modal_saque_coins') {
     const { processarSolicitacaoSaque } = require('../systems/saqueCoins');

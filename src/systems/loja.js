@@ -312,7 +312,7 @@ async function pagarComCoins(interaction, pedidoId, client) {
 }
 
 // ─── Compra via variante (painel de produto) ──────────────────────────────────
-async function iniciarCompraVariante(interaction, varianteId, client, cupomCodigo = null) {
+async function iniciarCompraVariante(interaction, varianteId, client, cupomCodigo = null, qtdInicial = 1) {
   if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
 
   // Verificar manutenção
@@ -385,8 +385,8 @@ async function iniciarCompraVariante(interaction, varianteId, client, cupomCodig
   }
 
   const pedidoId = Pedidos.criar({
-    usuarioId: interaction.user.id, produtoId: produto.id, quantidade: 1,
-    valorUnit: Number(variante.preco), valorTotal: precoFinal, desconto,
+    usuarioId: interaction.user.id, produtoId: produto.id, quantidade: qtdInicial,
+    valorUnit: Number(variante.preco), valorTotal: precoFinal * qtdInicial, desconto,
     afiliadoId, comissaoAfil, metodoPag: 'pix',
     cupomUsado: cupomUsado?.codigo || null,
   });
