@@ -148,7 +148,6 @@ async function enviarEmbedResgate(guild, canalId) {
   const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('convite_usar_codigo').setLabel('🎁 Usar Código de Convite').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('ver_saldo_coins').setLabel('💰 Ver Meu Saldo').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('sacar_coins_pix').setLabel('💸 Sacar via PIX').setStyle(ButtonStyle.Danger),
   );
 
   await canal.send({ embeds: [embed], components: [row1, row2] });

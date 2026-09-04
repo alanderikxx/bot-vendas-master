@@ -151,7 +151,7 @@ async function processarSolicitacaoSaque(interaction) {
   });
 }
 
-// ─── Aprovar saque (enviar PIX) ───────────────────────────────────────────────
+// ─── Aprovar saque (manual — admin envia PIX por conta própria) ──────────────
 async function aprovarSaque(interaction, saqueId) {
   await interaction.deferReply({ ephemeral: false });
 
@@ -164,78 +164,59 @@ async function aprovarSaque(interaction, saqueId) {
   if (!saque) return interaction.editReply({ content: '❌ Saque não encontrado.' });
   if (saque.status !== 'pendente') return interaction.editReply({ content: `⚠️ Saque já está como: **${saque.status}**` });
 
-  try {
-    const efi = require('./efi');
-    const resultado = await efi.enviarPixSaida({
-      valor:     saque.valor_reais,
-      chavePix:  saque.chave_pix,
-      tipoChave: 'auto',
-      descricao: `Saque Máximo Store - ${saque.usuario_id.slice(0,8)}`,
-    });
+  db.prepare("UPDATE saques_coins SET status='aprovado', aprovado_por=?, resolvido_em=strftime('%s','now') WHERE id=?")
+    .run(interaction.user.id, saqueId);
 
-    db.prepare("UPDATE saques_coins SET status='aprovado', aprovado_por=?, resolvido_em=strftime('%s','now') WHERE id=?")
-      .run(interaction.user.id, saqueId);
-
-    // Notificar usuário
-    const guild  = interaction.guild;
-    const member = await guild?.members.fetch(saque.usuario_id).catch(() => null);
-    if (member) {
-      await member.send({
-        embeds: [new EmbedBuilder()
-          .setColor(config.colors.success)
-          .setTitle('💸 Saque Aprovado!')
-          .setDescription([
-            `> Seu saque foi aprovado e o PIX foi enviado!`,
-            `> Verifique sua conta em alguns instantes.`,
-          ].join('\n'))
-          .addFields(
-            { name: `${COIN_EMOJI} Coins`,   value: `**${saque.coins.toLocaleString('pt-BR')}**`, inline: true },
-            { name: '💵 Valor',    value: `**R$ ${saque.valor_reais.toFixed(2)}**`,  inline: true },
-            { name: '🔑 Chave',    value: `\`${saque.chave_pix}\``,                  inline: true },
-          )
-          .setTimestamp()
-          .setFooter({ text: 'Máximo Store • PIX enviado com sucesso!' })],
-      }).catch(() => {});
-    }
-
-    await interaction.editReply({
+  // Notificar usuário no privado
+  const guild  = interaction.guild;
+  const member = await guild?.members.fetch(saque.usuario_id).catch(() => null);
+  if (member) {
+    await member.send({
       embeds: [new EmbedBuilder()
         .setColor(config.colors.success)
-        .setTitle('✅ PIX Enviado!')
+        .setTitle('💸 Saque Aprovado!')
+        .setDescription([
+          `> Seu saque foi **aprovado** e o PIX está sendo enviado para sua chave.`,
+          `> Verifique sua conta em alguns instantes.`,
+        ].join('\n'))
         .addFields(
-          { name: '👤 Usuário', value: `<@${saque.usuario_id}>`,               inline: true },
-          { name: '💵 Valor',   value: `R$ ${saque.valor_reais.toFixed(2)}`,   inline: true },
-          { name: '🔑 Chave',   value: `\`${saque.chave_pix}\``,               inline: true },
-          { name: '🆔 ID EFI',  value: `\`${resultado.idEnvio || '—'}\``,      inline: false },
+          { name: `${COIN_EMOJI} Coins`,    value: `**${saque.coins.toLocaleString('pt-BR')}**`,   inline: true },
+          { name: '💵 Valor',     value: `**R$ ${Number(saque.valor_reais).toFixed(2)}**`,         inline: true },
+          { name: '🔑 Chave PIX', value: `\`${saque.chave_pix}\``,                                inline: true },
+          { name: '✅ Aprovado por', value: `<@${interaction.user.id}>`,                           inline: false },
         )
-        .setTimestamp()],
-    });
-
-    await log('pagamento', {
-      executor:   interaction.user.id,
-      usuario:    saque.usuario_id,
-      valor:      saque.valor_reais,
-      descricao:  `💸 Saque aprovado: R$ ${saque.valor_reais.toFixed(2)} → ${saque.chave_pix}`,
-    });
-
-    // Atualizar mensagem original com status aprovado
-    await interaction.message.edit({
-      components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('_').setLabel(`✅ Aprovado por ${interaction.user.username}`).setStyle(ButtonStyle.Success).setDisabled(true),
-      )],
+        .setTimestamp()
+        .setFooter({ text: 'Máximo Store • O PIX pode levar alguns instantes para chegar' })],
     }).catch(() => {});
-
-  } catch (err) {
-    console.error('[SaqueCoins] Erro ao enviar PIX:', err.message);
-    if (err.response?.data) console.error('[SaqueCoins] Response EFI:', JSON.stringify(err.response.data));
-
-    const errMsg = err.response?.data?.erros?.[0]?.mensagem || err.response?.data?.mensagem || err.message;
-    db.prepare("UPDATE saques_coins SET status='erro' WHERE id=?").run(saqueId);
-
-    return interaction.editReply({
-      content: `❌ Erro ao enviar PIX: \`${errMsg.slice(0, 200)}\`\n> O saque foi marcado como erro. Os coins **não foram devolvidos** — contate o suporte se necessário.`,
-    });
   }
+
+  // Atualizar embed no canal de saques
+  await interaction.message.edit({
+    components: [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('_').setLabel(`✅ Aprovado por ${interaction.user.username}`).setStyle(ButtonStyle.Success).setDisabled(true),
+    )],
+  }).catch(() => {});
+
+  await interaction.editReply({
+    embeds: [new EmbedBuilder()
+      .setColor(config.colors.success)
+      .setTitle('✅ Saque Aprovado!')
+      .setDescription('> Usuário notificado no privado. Envie o PIX manualmente.')
+      .addFields(
+        { name: '👤 Usuário',    value: `<@${saque.usuario_id}>`,                        inline: true },
+        { name: '💵 Valor',      value: `R$ ${Number(saque.valor_reais).toFixed(2)}`,    inline: true },
+        { name: '🔑 Chave PIX',  value: `\`${saque.chave_pix}\``,                       inline: true },
+        { name: '✅ Aprovado por', value: `<@${interaction.user.id}>`,                   inline: false },
+      )
+      .setTimestamp()],
+  });
+
+  await log('pagamento', {
+    executor:  interaction.user.id,
+    usuario:   saque.usuario_id,
+    valor:     saque.valor_reais,
+    descricao: `💸 Saque APROVADO por <@${interaction.user.id}> | Usuário: <@${saque.usuario_id}> | R$ ${Number(saque.valor_reais).toFixed(2)} → \`${saque.chave_pix}\``,
+  });
 }
 
 // ─── Rejeitar saque ───────────────────────────────────────────────────────────
@@ -266,7 +247,7 @@ async function processarRejeicaoSaque(interaction, saqueId) {
   db.prepare("UPDATE saques_coins SET status='rejeitado', aprovado_por=?, motivo_rejeicao=?, resolvido_em=strftime('%s','now') WHERE id=?")
     .run(interaction.user.id, motivo, saqueId);
 
-  // Notificar usuário
+  // Notificar usuário no privado
   const member = await interaction.guild?.members.fetch(saque.usuario_id).catch(() => null);
   if (member) {
     await member.send({
@@ -274,21 +255,31 @@ async function processarRejeicaoSaque(interaction, saqueId) {
         .setColor(config.colors.error)
         .setTitle('❌ Saque Rejeitado')
         .setDescription([
-          `> Seu pedido de saque foi rejeitado.`,
-          `> Os coins foram **devolvidos** para o seu saldo.`,
+          `> Seu pedido de saque foi **rejeitado**.`,
+          `> Os coins foram **devolvidos** para o seu saldo automaticamente.`,
         ].join('\n'))
         .addFields(
           { name: `${COIN_EMOJI} Coins devolvidos`, value: `**${saque.coins.toLocaleString('pt-BR')}**`, inline: true },
-          { name: '❌ Motivo',                      value: motivo,                                        inline: false },
+          { name: '💵 Valor',                       value: `R$ ${Number(saque.valor_reais).toFixed(2)}`,  inline: true },
+          { name: '❌ Motivo',                       value: motivo,                                        inline: false },
+          { name: '🔧 Rejeitado por',               value: `<@${interaction.user.id}>`,                  inline: false },
         )
         .setTimestamp()
-        .setFooter({ text: 'Máximo Store • Entre em contato pelo suporte se achar que é um erro' })],
+        .setFooter({ text: 'Máximo Store • Abra um ticket se achar que é um erro' })],
     }).catch(() => {});
   }
 
   await interaction.editReply({
-    embeds: [new EmbedBuilder().setColor(config.colors.error).setTitle('❌ Saque Rejeitado')
-      .addFields({ name: '👤 Usuário', value: `<@${saque.usuario_id}>`, inline: true }, { name: '❌ Motivo', value: motivo, inline: true })
+    embeds: [new EmbedBuilder()
+      .setColor(config.colors.error)
+      .setTitle('❌ Saque Rejeitado')
+      .setDescription('> Coins devolvidos ao usuário e notificação enviada no privado.')
+      .addFields(
+        { name: '👤 Usuário',       value: `<@${saque.usuario_id}>`,                      inline: true },
+        { name: `${COIN_EMOJI} Coins`, value: `${saque.coins.toLocaleString('pt-BR')}`, inline: true },
+        { name: '❌ Motivo',        value: motivo,                                        inline: false },
+        { name: '🔧 Rejeitado por', value: `<@${interaction.user.id}>`,                  inline: false },
+      )
       .setTimestamp()],
   });
 
@@ -297,6 +288,12 @@ async function processarRejeicaoSaque(interaction, saqueId) {
       new ButtonBuilder().setCustomId('_').setLabel(`❌ Rejeitado por ${interaction.user.username}`).setStyle(ButtonStyle.Danger).setDisabled(true),
     )],
   }).catch(() => {});
+
+  await log('sistema', {
+    executor:  interaction.user.id,
+    usuario:   saque.usuario_id,
+    descricao: `💸 Saque REJEITADO por <@${interaction.user.id}> | Usuário: <@${saque.usuario_id}> | ${saque.coins} coins | Motivo: ${motivo}`,
+  });
 }
 
 // ─── Atualizar painel de coins com botão de saque ─────────────────────────────
