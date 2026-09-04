@@ -56,6 +56,75 @@ module.exports = async (interaction, client) => {
     return painelProdutoHandler(interaction, client);
   }
 
+  // ── Selecionar moeda de pagamento ────────────────────────────────────────────
+  if (id.startsWith('moeda_select_')) {
+    const pedidoId = id.replace('moeda_select_', '');
+    const moeda    = interaction.values[0]; // 'BRL' | 'USD' | 'EUR' | 'GBP' | 'CAD'
+
+    const pedido = Pedidos.get(pedidoId);
+    if (!pedido) return interaction.reply({ content: '❌ Pedido não encontrado.', ephemeral: true });
+    if (pedido.status !== 'pendente') return interaction.reply({ content: `⚠️ Pedido já: **${pedido.status}**`, ephemeral: true });
+
+    // BRL → PIX normal via EFI
+    if (moeda === 'BRL') {
+      const { gerarPixPedido } = require('../systems/loja');
+      return gerarPixPedido(interaction, pedidoId, client);
+    }
+
+    // Outras moedas → Stripe Checkout
+    await interaction.deferReply({ flags: 64 });
+    try {
+      const stripe  = require('../systems/stripe');
+      const { MOEDAS } = stripe;
+      const produto = Produtos.get(pedido.produto_id);
+
+      const checkout = await stripe.criarCheckout({
+        valorBrl:  pedido.valor_total,
+        descricao: `Máximo Store — ${produto?.nome || 'Produto'}`,
+        pedidoId,
+        moeda,
+      });
+
+      db.prepare("UPDATE pedidos SET tx_id=?, metodo_pag=? WHERE id=?")
+        .run(`ST_${checkout.sessionId}`, `stripe_${moeda.toLowerCase()}`, pedidoId);
+
+      const info = MOEDAS[moeda];
+      const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+
+      const rowPag = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel(`💳 Pagar ${info.simbolo}${checkout.valorMoeda} (${moeda})`)
+          .setStyle(ButtonStyle.Link)
+          .setURL(checkout.linkPagar),
+        new ButtonBuilder()
+          .setCustomId(`verificar_stripe_${pedidoId}`)
+          .setLabel('🔄 Verificar Pagamento')
+          .setStyle(ButtonStyle.Primary),
+      );
+
+      return interaction.editReply({
+        embeds: [new EmbedBuilder()
+          .setColor(0x635BFF)
+          .setTitle(`💳 Pagamento em ${info.nome} (${moeda})`)
+          .setDescription([
+            `> Clique no botão abaixo para pagar com cartão de crédito.`,
+            `> Após o pagamento, clique em **🔄 Verificar Pagamento**.`,
+          ].join('\n'))
+          .addFields(
+            { name: `${info.emoji} Valor ${moeda}`, value: `**${info.simbolo}${checkout.valorMoeda}**`, inline: true },
+            { name: '🇧🇷 Valor BRL',                 value: `R$ ${Number(pedido.valor_total).toFixed(2)}`, inline: true },
+            { name: '⚙️ Processado por',              value: '**Stripe** • Seguro e criptografado', inline: true },
+          )
+          .setTimestamp()
+          .setFooter({ text: 'Máximo Store • Pagamento seguro via Stripe' })],
+        components: [rowPag],
+      });
+    } catch (err) {
+      console.error('[Stripe Checkout]', err.message);
+      return interaction.editReply({ content: `❌ Erro ao gerar checkout: \`${err.message.slice(0, 100)}\`` });
+    }
+  }
+
   // ── Selecionar produto da loja ────────────────────────────────────────────
   if (id === 'loja_selecionar_produto') {
     const produtoId = interaction.values[0];

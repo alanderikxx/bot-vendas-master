@@ -219,6 +219,90 @@ module.exports = async (interaction, client) => {
     return mostrarLoja(interaction, pagina);
   }
 
+  // ── Escolher moeda de pagamento (select menu) ────────────────────────────────
+  if (id.startsWith('escolher_moeda_')) {
+    const pedidoId = id.replace('escolher_moeda_', '');
+    const pedido   = Pedidos.get(pedidoId);
+    if (!pedido) return interaction.reply({ content: '❌ Pedido não encontrado.', ephemeral: true });
+    if (pedido.status !== 'pendente') return interaction.reply({ content: `⚠️ Pedido já: **${pedido.status}**`, ephemeral: true });
+    if (pedido.usuario_id !== interaction.user.id) return interaction.reply({ content: '❌ Este pedido não é seu.', ephemeral: true });
+
+    const { StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
+    const { MOEDAS } = require('../systems/stripe');
+
+    const opcoes = [
+      new StringSelectMenuOptionBuilder()
+        .setValue('BRL')
+        .setLabel('🇧🇷 Real Brasileiro (BRL) — PIX')
+        .setDescription('Pagar via PIX instantâneo')
+        .setEmoji('💠'),
+    ];
+    for (const [code, info] of Object.entries(MOEDAS)) {
+      opcoes.push(
+        new StringSelectMenuOptionBuilder()
+          .setValue(code)
+          .setLabel(`${info.emoji} ${info.nome} (${code}) — Cartão`)
+          .setDescription(`Pagar em ${info.simbolo} via Stripe`)
+          .setEmoji('💳'),
+      );
+    }
+
+    const selectRow = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`moeda_select_${pedidoId}`)
+        .setPlaceholder('Selecione a moeda de pagamento...')
+        .addOptions(opcoes),
+    );
+
+    return interaction.reply({
+      embeds: [new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('💳 Escolher Forma de Pagamento')
+        .setDescription([
+          `> Selecione a moeda abaixo para prosseguir com o pagamento.`,
+          `> **BRL** usa PIX instantâneo.`,
+          `> **Outras moedas** usam Stripe (cartão de crédito).`,
+          '',
+          `💵 **Valor:** R$ ${Number(pedido.valor_total).toFixed(2)}`,
+        ].join('\n'))
+        .setFooter({ text: 'Máximo Store • Pagamento seguro' })],
+      components: [selectRow],
+      ephemeral: true,
+    });
+  }
+
+  // ── Verificar pagamento Stripe (qualquer moeda) ───────────────────────────────
+  if (id.startsWith('verificar_stripe_')) {
+    const pedidoId = id.replace('verificar_stripe_', '');
+    await interaction.deferReply({ ephemeral: true });
+    const pedido = Pedidos.get(pedidoId);
+    if (!pedido || pedido.status !== 'pendente') return interaction.editReply({ content: `⚠️ Pedido já: **${pedido?.status || 'não encontrado'}**` });
+
+    const sessionId = pedido.tx_id?.replace('ST_', '');
+    if (!sessionId) return interaction.editReply({ content: '❌ Sem sessão Stripe.' });
+
+    try {
+      const stripe = require('../systems/stripe');
+      const status = await stripe.consultarSessao(sessionId);
+      if (status.pago) {
+        db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE id=?").run(pedidoId);
+        const { processarEntrega } = require('../systems/loja');
+        await processarEntrega(Pedidos.get(pedidoId), client);
+        if (interaction.message) await interaction.message.delete().catch(() => {});
+        return interaction.editReply({ content: '✅ Pagamento confirmado! Produto entregue no privado.' });
+      }
+      return interaction.editReply({ content: '⏳ Pagamento não confirmado ainda. Complete o pagamento e tente novamente.' });
+    } catch (err) {
+      console.error('[Stripe Verificar]', err.message);
+      return interaction.editReply({ content: `❌ Erro: \`${err.message.slice(0,100)}\`` });
+    }
+  }
+
+  // ── Pagar com Stripe legado / PayPal legado ────────────────────────────────────
+  if (id.startsWith('pagar_stripe_') || id.startsWith('pagar_paypal_') || id.startsWith('verificar_paypal_')) {
+    return interaction.reply({ content: '⚠️ Use o botão **💳 Escolher Pagamento** para selecionar a moeda.', ephemeral: true });
+  }
+
   // ── Gerar PIX ao clicar no botão ────────────────────────────────────────────
   if (id.startsWith('gerar_pix_')) {
     const pedidoId = id.replace('gerar_pix_', '');
@@ -226,94 +310,6 @@ module.exports = async (interaction, client) => {
     return gerarPixPedido(interaction, pedidoId, client);
   }
 
-  // ── Pagar com PayPal ─────────────────────────────────────────────────────────
-  if (id.startsWith('pagar_paypal_')) {
-    const pedidoId = id.replace('pagar_paypal_', '');
-    await interaction.deferReply({ ephemeral: true });
-    const pedido = Pedidos.get(pedidoId);
-    if (!pedido) return interaction.editReply({ content: '❌ Pedido não encontrado.' });
-    if (pedido.status !== 'pendente') return interaction.editReply({ content: `⚠️ Pedido já está: **${pedido.status}**` });
-
-    try {
-      const paypal = require('../systems/paypal');
-      const produto = Produtos.get(pedido.produto_id);
-      const ordem   = await paypal.criarOrdem({
-        valorBrl:  pedido.valor_total,
-        descricao: `Máximo Store — ${produto?.nome || 'Produto'}`,
-        pedidoId,
-      });
-
-      // Salvar order ID no banco para verificar depois
-      db.prepare("UPDATE pedidos SET tx_id=?, metodo_pag='paypal' WHERE id=?").run(`PP_${ordem.orderId}`, pedidoId);
-
-      const rowPP = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setLabel(`💳 Pagar USD ${ordem.valorUsd}`).setStyle(ButtonStyle.Link).setURL(ordem.linkPagar),
-        new ButtonBuilder().setCustomId(`verificar_paypal_${pedidoId}`).setLabel('🔄 Verificar').setStyle(ButtonStyle.Primary),
-      );
-
-      await interaction.editReply({
-        embeds: [new EmbedBuilder()
-          .setColor(0x003087)
-          .setTitle('💳 Pagamento via PayPal')
-          .setDescription('> Clique no botão abaixo para pagar pelo PayPal.\n> Após o pagamento, clique em **🔄 Verificar**.')
-          .addFields(
-            { name: '💵 Valor em USD', value: `**$ ${ordem.valorUsd}**`, inline: true },
-            { name: '🇧🇷 Valor em BRL', value: `R$ ${pedido.valor_total.toFixed(2)}`, inline: true },
-          )
-          .setTimestamp()
-          .setFooter({ text: 'Máximo Store • PayPal' })],
-        components: [rowPP],
-      });
-    } catch (err) {
-      console.error('[PayPal]', err.message);
-      return interaction.editReply({ content: `❌ Erro ao criar ordem PayPal: \`${err.message.slice(0,100)}\`` });
-    }
-  }
-
-  // ── Verificar pagamento PayPal ────────────────────────────────────────────────
-  if (id.startsWith('verificar_paypal_')) {
-    const pedidoId = id.replace('verificar_paypal_', '');
-    await interaction.deferReply({ ephemeral: true });
-    const pedido = Pedidos.get(pedidoId);
-    if (!pedido) return interaction.editReply({ content: '❌ Pedido não encontrado.' });
-    if (pedido.status !== 'pendente') return interaction.editReply({ content: `✅ Pedido já: **${pedido.status}**` });
-
-    const orderId = pedido.tx_id?.replace('PP_', '');
-    if (!orderId) return interaction.editReply({ content: '❌ Sem ordem PayPal associada.' });
-
-    try {
-      const paypal  = require('../systems/paypal');
-      const status  = await paypal.consultarOrdem(orderId);
-
-      if (status.pago) {
-        // Capturar e entregar
-        await paypal.capturarPagamento(orderId).catch(() => {});
-        db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE id=?").run(pedidoId);
-        const { processarEntrega } = require('../systems/loja');
-        await processarEntrega(Pedidos.get(pedidoId), client);
-
-        if (interaction.message) await interaction.message.delete().catch(() => {});
-        return interaction.editReply({ content: '✅ Pagamento confirmado! Produto entregue no seu privado.' });
-      } else {
-        return interaction.editReply({ content: '⏳ Pagamento ainda não confirmado. Complete o pagamento no PayPal e tente novamente.' });
-      }
-    } catch (err) {
-      console.error('[PayPal Verificar]', err.message);
-      return interaction.editReply({ content: `❌ Erro: \`${err.message.slice(0,100)}\`` });
-    }
-  }
-
-  // ── Pagar com coins ──────────────────────────────────────────────────────────
-  if (id.startsWith('pagar_coins_')) {
-    const pedidoId = id.replace('pagar_coins_', '');
-    const { pagarComCoins } = require('../systems/loja');
-    return pagarComCoins(interaction, pedidoId, client);
-  }
-
-  // ── Liberar sem pagamento (cargo aceitar compra) ─────────────────────────────
-  if (id.startsWith('ticket_aceitar_sem_pag_')) {
-    const pedidoId = id.replace('ticket_aceitar_sem_pag_', '');
-    const { podeAceitarCompra } = require('../utils/permissions');
     if (!podeAceitarCompra(interaction.member)) {
       return interaction.reply({ content: '❌ Apenas quem tem o cargo **Aceitar Compra** pode liberar.', ephemeral: true });
     }
