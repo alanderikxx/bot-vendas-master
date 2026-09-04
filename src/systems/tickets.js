@@ -137,7 +137,8 @@ async function abrirTicket(guild, member, tipo = 'compra', dadosExtra = {}) {
     // Row 1 — Pagamento (cliente)
     const rowPag = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`gerar_pix_${dadosExtra.pedidoId}`).setLabel('💠 Pagar via PIX').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`pagar_coins_${dadosExtra.pedidoId}`).setLabel(`🪙 Pagar com Coins`).setStyle(ButtonStyle.Primary).setDisabled(!podeCoins),
+      new ButtonBuilder().setCustomId(`pagar_paypal_${dadosExtra.pedidoId}`).setLabel('💳 Pagar com PayPal (USD)').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`pagar_coins_${dadosExtra.pedidoId}`).setLabel(`🪙 Pagar com Coins`).setStyle(ButtonStyle.Secondary).setDisabled(!podeCoins),
       new ButtonBuilder().setCustomId(`aplicar_cupom_${dadosExtra.pedidoId}`).setLabel('🎟️ Cupom').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`cancelar_pedido_${dadosExtra.pedidoId}`).setLabel('❌ Cancelar').setStyle(ButtonStyle.Danger),
     );

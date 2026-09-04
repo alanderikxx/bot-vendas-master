@@ -226,6 +226,83 @@ module.exports = async (interaction, client) => {
     return gerarPixPedido(interaction, pedidoId, client);
   }
 
+  // ── Pagar com PayPal ─────────────────────────────────────────────────────────
+  if (id.startsWith('pagar_paypal_')) {
+    const pedidoId = id.replace('pagar_paypal_', '');
+    await interaction.deferReply({ ephemeral: true });
+    const pedido = Pedidos.get(pedidoId);
+    if (!pedido) return interaction.editReply({ content: '❌ Pedido não encontrado.' });
+    if (pedido.status !== 'pendente') return interaction.editReply({ content: `⚠️ Pedido já está: **${pedido.status}**` });
+
+    try {
+      const paypal = require('../systems/paypal');
+      const produto = Produtos.get(pedido.produto_id);
+      const ordem   = await paypal.criarOrdem({
+        valorBrl:  pedido.valor_total,
+        descricao: `Máximo Store — ${produto?.nome || 'Produto'}`,
+        pedidoId,
+      });
+
+      // Salvar order ID no banco para verificar depois
+      db.prepare("UPDATE pedidos SET tx_id=?, metodo_pag='paypal' WHERE id=?").run(`PP_${ordem.orderId}`, pedidoId);
+
+      const rowPP = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setLabel(`💳 Pagar USD ${ordem.valorUsd}`).setStyle(ButtonStyle.Link).setURL(ordem.linkPagar),
+        new ButtonBuilder().setCustomId(`verificar_paypal_${pedidoId}`).setLabel('🔄 Verificar').setStyle(ButtonStyle.Primary),
+      );
+
+      await interaction.editReply({
+        embeds: [new EmbedBuilder()
+          .setColor(0x003087)
+          .setTitle('💳 Pagamento via PayPal')
+          .setDescription('> Clique no botão abaixo para pagar pelo PayPal.\n> Após o pagamento, clique em **🔄 Verificar**.')
+          .addFields(
+            { name: '💵 Valor em USD', value: `**$ ${ordem.valorUsd}**`, inline: true },
+            { name: '🇧🇷 Valor em BRL', value: `R$ ${pedido.valor_total.toFixed(2)}`, inline: true },
+          )
+          .setTimestamp()
+          .setFooter({ text: 'Máximo Store • PayPal' })],
+        components: [rowPP],
+      });
+    } catch (err) {
+      console.error('[PayPal]', err.message);
+      return interaction.editReply({ content: `❌ Erro ao criar ordem PayPal: \`${err.message.slice(0,100)}\`` });
+    }
+  }
+
+  // ── Verificar pagamento PayPal ────────────────────────────────────────────────
+  if (id.startsWith('verificar_paypal_')) {
+    const pedidoId = id.replace('verificar_paypal_', '');
+    await interaction.deferReply({ ephemeral: true });
+    const pedido = Pedidos.get(pedidoId);
+    if (!pedido) return interaction.editReply({ content: '❌ Pedido não encontrado.' });
+    if (pedido.status !== 'pendente') return interaction.editReply({ content: `✅ Pedido já: **${pedido.status}**` });
+
+    const orderId = pedido.tx_id?.replace('PP_', '');
+    if (!orderId) return interaction.editReply({ content: '❌ Sem ordem PayPal associada.' });
+
+    try {
+      const paypal  = require('../systems/paypal');
+      const status  = await paypal.consultarOrdem(orderId);
+
+      if (status.pago) {
+        // Capturar e entregar
+        await paypal.capturarPagamento(orderId).catch(() => {});
+        db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE id=?").run(pedidoId);
+        const { processarEntrega } = require('../systems/loja');
+        await processarEntrega(Pedidos.get(pedidoId), client);
+
+        if (interaction.message) await interaction.message.delete().catch(() => {});
+        return interaction.editReply({ content: '✅ Pagamento confirmado! Produto entregue no seu privado.' });
+      } else {
+        return interaction.editReply({ content: '⏳ Pagamento ainda não confirmado. Complete o pagamento no PayPal e tente novamente.' });
+      }
+    } catch (err) {
+      console.error('[PayPal Verificar]', err.message);
+      return interaction.editReply({ content: `❌ Erro: \`${err.message.slice(0,100)}\`` });
+    }
+  }
+
   // ── Pagar com coins ──────────────────────────────────────────────────────────
   if (id.startsWith('pagar_coins_')) {
     const pedidoId = id.replace('pagar_coins_', '');
