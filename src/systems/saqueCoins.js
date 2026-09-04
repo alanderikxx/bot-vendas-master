@@ -63,7 +63,7 @@ async function abrirModalSaque(interaction) {
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
         .setCustomId('chave_pix')
-        .setLabel('Sua chave PIX (CPF, e-mail, telefone ou aleatória)')
+        .setLabel('Chave PIX (CPF, email, tel. ou aleatória)')
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
         .setPlaceholder('Ex: 12345678900 ou email@exemplo.com'),
