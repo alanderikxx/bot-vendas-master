@@ -444,6 +444,16 @@ async function init() {
   // Migração variantes — data de ultima atualização de estoque
   try { db.exec('ALTER TABLE variantes_produto ADD COLUMN estoque_atualizado_em INTEGER DEFAULT NULL'); } catch {}
 
+  // Tabela de transcripts armazenados
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS transcripts (
+      id          TEXT PRIMARY KEY,
+      ticket_id   TEXT NOT NULL,
+      html        TEXT NOT NULL,
+      criado_em   INTEGER DEFAULT (strftime('%s','now'))
+    )`);
+  } catch {}
+
   // Tabela de blacklist por CPF
   try {
     db.exec(`CREATE TABLE IF NOT EXISTS cpf_blacklist (

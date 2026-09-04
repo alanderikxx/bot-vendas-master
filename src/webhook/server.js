@@ -13,6 +13,19 @@ app.use(express.json());
 // ─── Servir assets estáticos (thumbnail, etc.) ────────────────────────────────
 app.use('/assets', express.static(path.join(__dirname, '../../assets')));
 
+// ─── Servir transcripts armazenados no banco ──────────────────────────────────
+app.get('/transcript/:id', (req, res) => {
+  try {
+    const { db: database } = require('../database/database');
+    const row = database.prepare('SELECT html FROM transcripts WHERE id=? OR ticket_id LIKE ?').get(req.params.id, `${req.params.id}%`);
+    if (!row) return res.status(404).send('<h1>Transcript não encontrado</h1>');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(row.html);
+  } catch (err) {
+    res.status(500).send('<h1>Erro ao carregar transcript</h1>');
+  }
+});
+
 let _client = null;
 
 // ─── Webhook PIX EFI Bank ─────────────────────────────────────────────────────

@@ -289,6 +289,25 @@ async function assumirTicket(interaction) {
 
   Tickets.atualizar(interaction.channel.id, { atendente: interaction.user.id });
 
+  // Atualizar o embed original do ticket com o atendente
+  try {
+    const msgs = await interaction.channel.messages.fetch({ limit: 10 });
+    const msgBot = msgs.find(m => m.author.bot && m.embeds.length > 0);
+    if (msgBot) {
+      const embedOriginal = msgBot.embeds[0];
+      const { EmbedBuilder: EB } = require('discord.js');
+      const novoEmbed = EB.from(embedOriginal.toJSON());
+      // Atualizar campo Atendente
+      const fields = novoEmbed.data.fields || [];
+      const idxAtendente = fields.findIndex(f => f.name.includes('Atendente'));
+      if (idxAtendente >= 0) {
+        fields[idxAtendente] = { name: '✋ Atendente', value: `<@${interaction.user.id}>`, inline: true };
+        novoEmbed.data.fields = fields;
+      }
+      await msgBot.edit({ embeds: [novoEmbed] }).catch(() => {});
+    }
+  } catch {}
+
   await interaction.reply({
     embeds: [new EmbedBuilder()
       .setColor(config.colors.success)
@@ -485,6 +504,19 @@ async function enviarTranscricao(guild, ticket, buffer) {
     const canalTranscript = guild.channels.cache.get(CANAL_TRANSCRIPT);
     if (!canalTranscript) return;
 
+    const { db: database }  = require('../database/database');
+    const { v4: uuid }       = require('uuid');
+    const { v4: uuidv4 }     = require('uuid');
+
+    // Salvar HTML no banco
+    const transcriptId = uuidv4();
+    const htmlStr      = buffer.toString('utf-8');
+    database.prepare('INSERT INTO transcripts (id, ticket_id, html) VALUES (?,?,?)').run(transcriptId, ticket.id, htmlStr);
+
+    // URL para abrir o transcript no browser
+    const baseUrl    = process.env.WEBHOOK_URL?.replace('/webhook', '') || 'http://localhost:3000';
+    const urlTranscript = `${baseUrl}/transcript/${transcriptId}`;
+
     const duracao   = Math.floor((Date.now()/1000 - ticket.criado_em) / 60);
     const abertura  = moment.unix(ticket.criado_em).tz(config.timezone).format('DD/MM/YYYY HH:mm');
     const atendente = ticket.atendente ? `<@${ticket.atendente}>` : 'Não assumido';
@@ -503,12 +535,17 @@ async function enviarTranscricao(guild, ticket, buffer) {
         { name: '📝 Motivo',         value: ticket.motivo || '—',                                            inline: false },
       )
       .setTimestamp()
-      .setFooter({ text: 'Máximo Store • Transcript em anexo (arquivo HTML)' });
+      .setFooter({ text: 'Máximo Store • Clique no botão abaixo para abrir o transcript' });
 
-    // Enviar arquivo com || (spoiler) para não mostrar preview
-    const att = new AttachmentBuilder(buffer, { name: `SPOILER_transcript-${ticket.id.slice(0,8)}.html` });
+    // Botão que abre o transcript direto no browser (sem download)
+    const rowBtn = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('📂 Abrir Transcript')
+        .setStyle(ButtonStyle.Link)
+        .setURL(urlTranscript),
+    );
 
-    await canalTranscript.send({ embeds: [embed], files: [att] }).catch(() => {});
+    await canalTranscript.send({ embeds: [embed], components: [rowBtn] }).catch(() => {});
   } catch (err) {
     console.error('[Transcrição]', err.message);
   }
