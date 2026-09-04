@@ -117,21 +117,22 @@ async function abrirTicket(guild, member, tipo = 'compra', dadosExtra = {}) {
       .setColor(config.colors.primary)
       .setTitle(`🛒 Pedido — ${dadosExtra.produto || 'Produto'}`)
       .setDescription([
-        `> Olá, <@${member.id}>! Seu pedido foi aberto com sucesso.`,
+        `> <@${member.id}> abriu um pedido de compra.`,
         `> Escolha a forma de pagamento abaixo para prosseguir.`,
       ].join('\n'))
       .addFields(
-        { name: '📦 Produto',   value: dadosExtra.produto || '—',                               inline: true },
-        { name: '💵 Valor',     value: `R$ ${valor.toFixed(2)}`,                                inline: true },
-        { name: '🆔 Pedido',    value: `\`${dadosExtra.pedidoId.slice(0,8).toUpperCase()}\``,   inline: true },
-        { name: '🪙 Coins',     value: `${coins.toLocaleString('pt-BR')} (≈ R$ ${valorCoins.toFixed(2)})`, inline: true },
-        { name: '🎫 Ticket',    value: `\`${ticketId.slice(0,8).toUpperCase()}\``,              inline: true },
-        { name: '⏰ PIX expira', value: `<t:${expiraPix}:R>`,                                   inline: true },
-        { name: '🎁 Cashback',  value: `+**${cashbackCoins} coins** ao pagar sem cupom`,        inline: true },
-        { name: '🎯 Fila',      value: filaLabel,                                               inline: false },
+        { name: '📦 Produto',    value: dadosExtra.produto || '—',                               inline: true },
+        { name: '💵 Valor',      value: `**R$ ${valor.toFixed(2)}**`,                            inline: true },
+        { name: '🆔 Pedido',     value: `\`${dadosExtra.pedidoId.slice(0,8).toUpperCase()}\``,   inline: true },
+        { name: '🪙 Coins',      value: `${coins.toLocaleString('pt-BR')} (≈ R$ ${valorCoins.toFixed(2)})`, inline: true },
+        { name: '🎫 Ticket',     value: `\`${ticketId.slice(0,8).toUpperCase()}\``,              inline: true },
+        { name: '⏰ PIX expira',  value: `<t:${expiraPix}:R>`,                                   inline: true },
+        { name: '🎁 Cashback',   value: `+**${cashbackCoins} coins** ao pagar sem cupom`,        inline: true },
+        { name: '🎯 Fila',       value: filaLabel,                                               inline: true },
+        { name: '✋ Atendente',  value: `*Ninguém assumiu ainda*`,                              inline: true },
       )
       .setTimestamp()
-      .setFooter({ text: 'Máximo Store • Sistema de Pedidos' });
+      .setFooter({ text: `Máximo Store • Aberto por ${member.user.username}` });
 
     // Row 1 — Pagamento (cliente)
     const rowPag = new ActionRowBuilder().addComponents(
@@ -292,8 +293,9 @@ async function assumirTicket(interaction) {
     embeds: [new EmbedBuilder()
       .setColor(config.colors.success)
       .setTitle('✋ Ticket Assumido')
-      .setDescription(`<@${interaction.user.id}> assumiu este ticket e irá atendê-lo.`)
-      .setTimestamp()],
+      .setDescription(`> <@${interaction.user.id}> assumiu este ticket e irá atendê-lo.\n> Apenas ele pode fechar este ticket.`)
+      .setTimestamp()
+      .setFooter({ text: `Máximo Store • Atendente: ${interaction.user.username}` })],
   });
 }
 
@@ -483,35 +485,30 @@ async function enviarTranscricao(guild, ticket, buffer) {
     const canalTranscript = guild.channels.cache.get(CANAL_TRANSCRIPT);
     if (!canalTranscript) return;
 
-    const att      = new AttachmentBuilder(buffer, { name: `transcript-${ticket.id.slice(0,8)}.html` });
-    const duracao  = Math.floor((Date.now()/1000 - ticket.criado_em) / 60);
-    const abertura = moment.unix(ticket.criado_em).tz(config.timezone).format('DD/MM/YYYY HH:mm');
+    const duracao   = Math.floor((Date.now()/1000 - ticket.criado_em) / 60);
+    const abertura  = moment.unix(ticket.criado_em).tz(config.timezone).format('DD/MM/YYYY HH:mm');
     const atendente = ticket.atendente ? `<@${ticket.atendente}>` : 'Não assumido';
 
     const embed = new EmbedBuilder()
       .setColor(config.colors.dark)
       .setTitle('📄 Transcript — Ticket Encerrado')
       .addFields(
-        { name: '👤 Aberto por',     value: `<@${ticket.usuario_id}>`,         inline: true },
-        { name: '🔒 Fechado por',    value: ticket.fechado_por ? `<@${ticket.fechado_por}>` : '—', inline: true },
-        { name: '✋ Atendente',      value: atendente,                          inline: true },
-        { name: '🆔 Ticket',         value: `\`${ticket.id.slice(0,8).toUpperCase()}\``, inline: true },
-        { name: '📋 Tipo',           value: ticket.tipo.toUpperCase(),          inline: true },
-        { name: '⏱️ Duração',        value: `${duracao} min`,                   inline: true },
-        { name: '📅 Aberto em',      value: abertura,                           inline: false },
-        { name: '📝 Motivo',         value: ticket.motivo || '—',               inline: false },
+        { name: '👤 Aberto por',     value: `<@${ticket.usuario_id}>`,                                      inline: true },
+        { name: '🔒 Fechado por',    value: ticket.fechado_por ? `<@${ticket.fechado_por}>` : '—',          inline: true },
+        { name: '✋ Atendente',      value: atendente,                                                       inline: true },
+        { name: '🆔 Ticket',         value: `\`${ticket.id.slice(0,8).toUpperCase()}\``,                    inline: true },
+        { name: '📋 Tipo',           value: ticket.tipo.toUpperCase(),                                       inline: true },
+        { name: '⏱️ Duração',        value: `${duracao} min`,                                                inline: true },
+        { name: '📅 Aberto em',      value: abertura,                                                        inline: false },
+        { name: '📝 Motivo',         value: ticket.motivo || '—',                                            inline: false },
       )
       .setTimestamp()
-      .setFooter({ text: 'Máximo Store • Clique em Abrir Transcript para ver o HTML' });
+      .setFooter({ text: 'Máximo Store • Transcript em anexo (arquivo HTML)' });
 
-    const rowTranscript = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setLabel('📂 Abrir Transcript')
-        .setStyle(ButtonStyle.Link)
-        .setURL(`https://discord.com/channels/${guild.id}/${CANAL_TRANSCRIPT}`),
-    );
+    // Enviar arquivo com || (spoiler) para não mostrar preview
+    const att = new AttachmentBuilder(buffer, { name: `SPOILER_transcript-${ticket.id.slice(0,8)}.html` });
 
-    await canalTranscript.send({ embeds: [embed], files: [att], components: [rowTranscript] }).catch(() => {});
+    await canalTranscript.send({ embeds: [embed], files: [att] }).catch(() => {});
   } catch (err) {
     console.error('[Transcrição]', err.message);
   }

@@ -567,9 +567,24 @@ module.exports = async (interaction, client) => {
 
   // ── Tickets ──────────────────────────────────────────────────────────────────
   if (id === 'ticket_fechar') {
-    const { podeVerTickets } = require('../utils/permissions');
-    if (!podeVerTickets(interaction.member) && interaction.user.id !== require('../database/database').Tickets.get(interaction.channel?.id)?.usuario_id) {
-      return interaction.reply({ content: '❌ Apenas cargo Suporte+ pode fechar tickets.', ephemeral: true });
+    const { Tickets } = require('../database/database');
+    const { isAdmin } = require('../utils/permissions');
+    const ticket = Tickets.get(interaction.channel?.id);
+    if (ticket) {
+      const assumido = ticket.atendente;
+      const ehAdmin  = isAdmin(interaction.member);
+      const ehOwner  = interaction.member?.roles?.cache?.has(config.roles.owner);
+      // Só pode fechar: quem assumiu, admin ou owner
+      if (assumido && assumido !== interaction.user.id && !ehAdmin && !ehOwner) {
+        return interaction.reply({ content: `❌ Apenas <@${assumido}> (que assumiu o ticket) pode fechá-lo.`, ephemeral: true });
+      }
+      if (!assumido) {
+        // Ninguém assumiu — só staff consegue fechar
+        const { podeVerTickets } = require('../utils/permissions');
+        if (!podeVerTickets(interaction.member)) {
+          return interaction.reply({ content: '❌ Apenas cargo Suporte+ pode fechar tickets.', ephemeral: true });
+        }
+      }
     }
     return fecharTicket(interaction);
   }
