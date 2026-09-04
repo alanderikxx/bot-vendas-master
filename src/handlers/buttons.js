@@ -310,6 +310,9 @@ module.exports = async (interaction, client) => {
     return gerarPixPedido(interaction, pedidoId, client);
   }
 
+  // ── Aceitar compra sem pagamento (liberar manualmente) ───────────────────────
+  if (id.startsWith('ticket_aceitar_sem_pag_')) {
+    const pedidoId = id.replace('ticket_aceitar_sem_pag_', '');
     if (!podeAceitarCompra(interaction.member)) {
       return interaction.reply({ content: '❌ Apenas quem tem o cargo **Aceitar Compra** pode liberar.', ephemeral: true });
     }
