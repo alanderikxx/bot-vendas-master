@@ -601,6 +601,7 @@ async function entregarProduto(pedido, client) {
     );
 
     // Buscar transcript do ticket se existir
+    const { buscarBotaoTranscript, montarEmbedSugestao } = require('../utils/dmHelpers');
     const transcriptBtn = await buscarBotaoTranscript(pedido.ticket_id);
     if (transcriptBtn) row.addComponents(transcriptBtn);
 
@@ -837,60 +838,3 @@ function iniciarPollingPagamento(pedidoId, txid, guild, client) {
     } catch (err) { console.error('[Polling PIX]', err.message); }
   }, 50000);
 }
-
-// ─── Helpers para DM de entrega ──────────────────────────────────────────────
-
-function montarEmbedSugestao() {
-  try {
-    const produtos = db.prepare(`
-      SELECT p.*, MIN(vp.preco) as menor_preco
-      FROM produtos p
-      JOIN variantes_produto vp ON vp.produto_id = p.id AND vp.ativo = 1
-      JOIN estoque_variante ev ON ev.variante_id = vp.id AND ev.usado = 0
-      WHERE p.ativo = 1
-      GROUP BY p.id
-      ORDER BY menor_preco ASC
-      LIMIT 3
-    `).all();
-    if (!produtos.length) return null;
-
-    const embed = new EmbedBuilder()
-      .setColor(0xFFD700)
-      .setTitle('🛍️ Confira outros produtos da loja!')
-      .setDescription('> Aproveite e dê uma olhada nos produtos mais acessíveis da nossa loja:')
-      .addFields(
-        ...produtos.map(p => ({
-          name:  `📦 ${p.nome}`,
-          value: `A partir de **R$ ${Number(p.menor_preco).toFixed(2)}**`,
-          inline: true,
-        }))
-      )
-      .setTimestamp()
-      .setFooter({ text: 'Máximo Store • Volte sempre!' });
-    return embed;
-  } catch { return null; }
-}
-
-async function buscarBotaoTranscript(ticketId) {
-  if (!ticketId) return null;
-  try {
-    const row = db.prepare('SELECT id FROM transcripts WHERE ticket_id=? ORDER BY criado_em DESC LIMIT 1').get(ticketId);
-    if (!row) return null;
-    const baseUrl = process.env.BOT_URL
-      || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null)
-      || process.env.WEBHOOK_URL?.replace('/webhook', '').replace(':3000', '').replace(':8080', '')
-      || 'http://localhost:3000';
-    return new ButtonBuilder()
-      .setLabel('📂 Ver Transcript')
-      .setStyle(ButtonStyle.Link)
-      .setURL(`${baseUrl}/transcript/${row.id}`);
-  } catch { return null; }
-}
-
-module.exports = {
-  mostrarLoja, mostrarProduto,
-  iniciarCompra, iniciarCompraVariante,
-  gerarPixPedido, pagarComCoins, liberarPedidoManual,
-  iniciarCompraBoleto, processarCompraBoleto,
-  entregarProduto, processarEntrega, iniciarPollingPagamento,
-};

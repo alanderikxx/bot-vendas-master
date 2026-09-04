@@ -271,35 +271,8 @@ async function fecharTicket(interaction, motivo = null) {
 
   // Enviar DM para o cliente APÓS o transcript estar salvo
   try {
-    const member = await interaction.guild?.members.fetch(ticket.usuario_id).catch(() => null);
-    if (member) {
-      const { montarEmbedSugestao, buscarBotaoTranscript } = require('./loja');
-
-      const embedDm = new EmbedBuilder()
-        .setColor(config.colors.dark)
-        .setTitle('🔒 Seu ticket foi encerrado')
-        .setDescription('> Seu atendimento foi finalizado. Abaixo o resumo:')
-        .addFields(
-          { name: '🆔 Ticket',      value: `\`${ticket.id.slice(0,8).toUpperCase()}\``,   inline: true },
-          { name: '✋ Atendente',   value: ticketAtualizado.atendente ? `<@${ticketAtualizado.atendente}>` : '—', inline: true },
-          { name: '🔒 Fechado por', value: `<@${interaction.user.id}>`,                   inline: true },
-          { name: '📝 Motivo',      value: motivo,                                         inline: false },
-        )
-        .setTimestamp()
-        .setFooter({ text: 'Máximo Store • Obrigado pelo contato!' });
-
-      const rowDm = new ActionRowBuilder();
-      const transcriptBtn = await buscarBotaoTranscript(ticket.id);
-      if (transcriptBtn) rowDm.addComponents(transcriptBtn);
-
-      await member.send({
-        embeds: [embedDm],
-        components: rowDm.components.length ? [rowDm] : [],
-      }).catch(() => {});
-
-      const embedSugestao = montarEmbedSugestao();
-      if (embedSugestao) await member.send({ embeds: [embedSugestao] }).catch(() => {});
-    }
+    const { enviarDmFechamento } = require('../utils/dmHelpers');
+    await enviarDmFechamento(interaction.guild, ticketAtualizado, motivo, interaction.user.id);
   } catch (err) {
     console.error('[Ticket DM]', err.message);
   }
@@ -587,6 +560,14 @@ async function enviarTranscricao(guild, ticket, buffer) {
     );
 
     await canalTranscript.send({ embeds: [embed], components: [rowBtn] }).catch(() => {});
+
+    // Enviar arquivo HTML no canal de erros/logs para backup
+    const CANAL_ERROS = '1544998939323797554';
+    const canalErros = guild.channels.cache.get(CANAL_ERROS);
+    if (canalErros) {
+      const att = new AttachmentBuilder(buffer, { name: `transcript-${ticket.id.slice(0,8)}.html` });
+      await canalErros.send({ content: `📄 Transcript ticket \`${ticket.id.slice(0,8).toUpperCase()}\` — <@${ticket.usuario_id}>`, files: [att] }).catch(() => {});
+    }
   } catch (err) {
     console.error('[Transcrição]', err.message);
   }
