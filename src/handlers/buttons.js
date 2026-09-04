@@ -5,7 +5,7 @@ const { fecharTicket, assumirTicket, gerarTranscript } = require('../systems/tic
 const { adicionarAoCarrinho, removerDoCarrinho, limparCarrinho, mostrarCarrinho, listarCarrinho, calcularTotal } = require('../systems/carrinho');
 const { solicitarSaque } = require('../systems/afiliados');
 const { Pedidos, Produtos, Usuarios, db } = require('../database/database');
-const { isStaff } = require('../utils/permissions');
+const { isStaff, podeAceitarCompra, podeVerTickets } = require('../utils/permissions');
 const { Embeds } = require('../utils/embeds');
 const { log } = require('../utils/logger');
 const painelButtons = require('./painelButtons');
@@ -656,7 +656,6 @@ module.exports = async (interaction, client) => {
       }
       if (!assumido) {
         // Ninguém assumiu — só staff consegue fechar
-        const { podeVerTickets } = require('../utils/permissions');
         if (!podeVerTickets(interaction.member)) {
           return interaction.reply({ content: '❌ Apenas cargo Suporte+ pode fechar tickets.', ephemeral: true });
         }
@@ -665,7 +664,6 @@ module.exports = async (interaction, client) => {
     return fecharTicket(interaction);
   }
   if (id === 'ticket_assumir') {
-    const { podeVerTickets } = require('../utils/permissions');
     if (!podeVerTickets(interaction.member)) {
       return interaction.reply({ content: '❌ Apenas cargo Suporte+ pode assumir tickets.', ephemeral: true });
     }
