@@ -114,21 +114,29 @@ async function enviarEmbedResgate(guild, canalId) {
     .setColor(0xFFD700)
     .setTitle(`${COIN_EMOJI} Central de Coins & Convites`)
     .setDescription([
-      `> Ganhe coins e use na loja para comprar produtos!`,
+      `> Ganhe coins, use na loja e saque o saldo direto no seu PIX!`,
       '',
       `**📌 Como ganhar coins:**`,
+      `🛒 **Compra sem cupom:** ganhe **5% de cashback** em coins automaticamente`,
       `🎁 **Código de coins** (do admin): resgate e receba coins instantaneamente`,
       `🔗 **Código de convite**: use o código de alguém e ganhe **+15 coins**`,
       `🤝 **Seu código**: quando alguém usar, você ganha **+5 coins**`,
+      '',
+      `**💸 Como sacar seus coins:**`,
+      `> \`1.\` Clique em **💸 Sacar via PIX** abaixo`,
+      `> \`2.\` Informe a quantidade de coins e sua chave PIX`,
+      `> \`3.\` Aguarde aprovação — o valor cai na sua conta em minutos`,
+      `> ⚠️ Mínimo de saque: **100 coins (R$ 1,00)**`,
       '',
       `> 💵 **100 coins = R$ 1,00** em qualquer produto da loja`,
       `> ${totalUsos} pessoas já usaram códigos de convite!`,
     ].join('\n'))
     .addFields(
-      { name: `🎁 Código de Coins`,   value: `Resgatar código\ndo admin`,         inline: true },
-      { name: `🔗 Criar Código`,      value: `Gere seu código\nde convite`,        inline: true },
-      { name: `✅ Usar Código`,        value: `Use o código\nde alguém (+15 coins)`, inline: true },
-      { name: `💰 Meu Saldo`,         value: `Ver seus coins\ne histórico`,         inline: true },
+      { name: `🎁 Código de Coins`,   value: `Resgatar código\ndo admin`,           inline: true },
+      { name: `🔗 Criar Código`,      value: `Gere seu código\nde convite`,          inline: true },
+      { name: `✅ Usar Código`,        value: `Use o código\nde alguém (+15 coins)`,  inline: true },
+      { name: `💰 Meu Saldo`,         value: `Ver seus coins\ne histórico`,           inline: true },
+      { name: `💸 Sacar via PIX`,     value: `Converter coins\nem dinheiro real`,     inline: true },
     )
     .setTimestamp()
     .setFooter({ text: `Máximo Store • ${totalCodigos} código(s) de coins disponíveis` });
@@ -140,6 +148,7 @@ async function enviarEmbedResgate(guild, canalId) {
   const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('convite_usar_codigo').setLabel('🎁 Usar Código de Convite').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('ver_saldo_coins').setLabel('💰 Ver Meu Saldo').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('sacar_coins_pix').setLabel('💸 Sacar via PIX').setStyle(ButtonStyle.Danger),
   );
 
   await canal.send({ embeds: [embed], components: [row1, row2] });

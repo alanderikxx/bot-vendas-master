@@ -12,6 +12,18 @@ const _webhookAvaliacoes = new WebhookClient({ url: 'https://discord.com/api/web
 module.exports = async (interaction, client) => {
   const id = interaction.customId;
 
+  // ── Modal Saque de Coins ──────────────────────────────────────────────────
+  if (id === 'modal_saque_coins') {
+    const { processarSolicitacaoSaque } = require('../systems/saqueCoins');
+    return processarSolicitacaoSaque(interaction);
+  }
+
+  else if (id.startsWith('modal_rejeitar_saque_')) {
+    const saqueId = id.replace('modal_rejeitar_saque_', '');
+    const { processarRejeicaoSaque } = require('../systems/saqueCoins');
+    return processarRejeicaoSaque(interaction, saqueId);
+  }
+
   // ── Modais do painel admin central (pam_*) ────────────────────────────────
   if (id.startsWith('pam_')) {
     return handlePainelAdminModals(interaction, client);

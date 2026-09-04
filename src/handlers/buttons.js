@@ -120,6 +120,22 @@ module.exports = async (interaction, client) => {
     if (id === 'cxi_cancelar') return cx.itemCancelar(interaction);
   }
 
+  // ── Saque de coins via PIX ───────────────────────────────────────────────────
+  if (id === 'sacar_coins_pix') {
+    const { abrirModalSaque } = require('../systems/saqueCoins');
+    return abrirModalSaque(interaction);
+  }
+  if (id.startsWith('saque_aprovar_')) {
+    const saqueId = id.replace('saque_aprovar_', '');
+    const { aprovarSaque } = require('../systems/saqueCoins');
+    return aprovarSaque(interaction, saqueId);
+  }
+  if (id.startsWith('saque_rejeitar_')) {
+    const saqueId = id.replace('saque_rejeitar_', '');
+    const { rejeitarSaque } = require('../systems/saqueCoins');
+    return rejeitarSaque(interaction, saqueId);
+  }
+
   // ── Resgate de códigos de coins ───────────────────────────────────────────
   if (id === 'resgatar_codigo_coins') {
     const modal = new (require('discord.js').ModalBuilder)()

@@ -462,6 +462,23 @@ async function init() {
     )`);
   } catch {}
 
+  // Tabela de saques de coins via PIX
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS saques_coins (
+      id          TEXT PRIMARY KEY,
+      usuario_id  TEXT NOT NULL,
+      coins       INTEGER NOT NULL,
+      valor_reais REAL NOT NULL,
+      chave_pix   TEXT NOT NULL,
+      tipo_chave  TEXT DEFAULT 'auto',
+      status      TEXT DEFAULT 'pendente',
+      aprovado_por TEXT,
+      motivo_rejeicao TEXT,
+      criado_em   INTEGER DEFAULT (strftime('%s','now')),
+      resolvido_em INTEGER
+    )`);
+  } catch {}
+
   // Configurações padrão
   const cfgStmt = db.prepare(`INSERT OR IGNORE INTO configuracoes (chave, valor, tipo, descricao) VALUES (?, ?, ?, ?)`);
   const defaults = [

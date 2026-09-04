@@ -500,10 +500,17 @@ async function entregarProduto(pedido, client) {
     // Atualizar estatísticas e cargo
     const usuario = Usuarios.get(pedido.usuario_id);
     if (usuario) {
-      const novoGasto   = (usuario.total_gasto || 0) + pedido.valor_total;
+      const novoGasto    = (usuario.total_gasto || 0) + pedido.valor_total;
       const novasCompras = (usuario.total_compras || 0) + 1;
       Usuarios.atualizar(pedido.usuario_id, { total_gasto: novoGasto, total_compras: novasCompras });
       Usuarios.addPontos(pedido.usuario_id, Math.floor(pedido.valor_total));
+
+      // Cashback 5% em compras sem cupom (1 real = 100 coins, 5% = 5 coins por real)
+      if (!pedido.cupom_usado && pedido.valor_total >= 1) {
+        const { addCoins } = require('./coins');
+        const coinsCashback = Math.floor(pedido.valor_total * 5); // 5 coins por real = 5% cashback
+        addCoins(pedido.usuario_id, coinsCashback, `Cashback 5% — Pedido ${pedido.id.slice(0,8).toUpperCase()}`);
+      }
 
       // Comissão afiliado
       if (pedido.afiliado_id && pedido.comissao_afil > 0) {
