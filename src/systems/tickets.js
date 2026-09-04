@@ -109,7 +109,9 @@ async function abrirTicket(guild, member, tipo = 'compra', dadosExtra = {}) {
     const filaLabel   = posicaoFila <= 1 ? '🟢 Você é o próximo!' : `🟡 Posição na fila: **${posicaoFila}**`;
 
     // Temporizador PIX — expira em 30 minutos
-    const expiraPix = Math.floor(Date.now() / 1000) + 1800;
+    const expiraPix  = Math.floor(Date.now() / 1000) + 1800;
+    // Cashback estimado (5% sem cupom)
+    const cashbackCoins = Math.floor(valor * 5);
 
     const embedCompra = new EmbedBuilder()
       .setColor(config.colors.primary)
@@ -125,6 +127,7 @@ async function abrirTicket(guild, member, tipo = 'compra', dadosExtra = {}) {
         { name: '🪙 Coins',     value: `${coins.toLocaleString('pt-BR')} (≈ R$ ${valorCoins.toFixed(2)})`, inline: true },
         { name: '🎫 Ticket',    value: `\`${ticketId.slice(0,8).toUpperCase()}\``,              inline: true },
         { name: '⏰ PIX expira', value: `<t:${expiraPix}:R>`,                                   inline: true },
+        { name: '🎁 Cashback',  value: `+**${cashbackCoins} coins** ao pagar sem cupom`,        inline: true },
         { name: '🎯 Fila',      value: filaLabel,                                               inline: false },
       )
       .setTimestamp()

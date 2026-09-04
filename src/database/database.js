@@ -441,6 +441,9 @@ async function init() {
   try { db.exec('ALTER TABLE cupons ADD COLUMN usos_por_usuario INTEGER DEFAULT 1'); } catch {}
   try { db.exec('ALTER TABLE cupons ADD COLUMN lojas_validas TEXT DEFAULT NULL'); } catch {}
 
+  // Migração variantes — data de ultima atualização de estoque
+  try { db.exec('ALTER TABLE variantes_produto ADD COLUMN estoque_atualizado_em INTEGER DEFAULT NULL'); } catch {}
+
   // Tabela de blacklist por CPF
   try {
     db.exec(`CREATE TABLE IF NOT EXISTS cpf_blacklist (

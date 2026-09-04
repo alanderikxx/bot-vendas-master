@@ -413,6 +413,16 @@ async function atualizarPainelProduto(guild, painelId) {
     };
     if (imagemValida) embedData.image = { url: imagemValida };
 
+    // Thumbnail (imagem pequena no canto direito) — usa mesma URL ou ícone padrão
+    if (imagemValida) embedData.thumbnail = { url: imagemValida };
+
+    // Footer com data da última atualização de estoque
+    const ultimaAtt = db.prepare('SELECT MAX(estoque_atualizado_em) as dt FROM variantes_produto WHERE produto_id=? AND ativo=1').get(painel.produto_id);
+    if (ultimaAtt?.dt) {
+      const dataAtt = new Date(ultimaAtt.dt * 1000).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone:'America/Sao_Paulo' });
+      embedData.footer = { text: `Máximo Store • Estoque atualizado em ${dataAtt}` };
+    }
+
     const components = montarComponentes(variantes, painelId);
     console.log(`[PainelProduto] Enviando — title="${embedData.title.slice(0,30)}" components=${components.length}`);
 

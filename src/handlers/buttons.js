@@ -182,7 +182,7 @@ module.exports = async (interaction, client) => {
   }
 
   // ── Painéis de produto publicados (compra/select) ────────────────────────
-  if (id.startsWith('painel_selecionar_') || id.startsWith('painel_comprar_var_')) {
+  if (id.startsWith('painel_selecionar_') || id.startsWith('painel_comprar_var_') || id.startsWith('confirmar_compra_var_') || id === 'cancelar_confirmacao') {
     return painelProdutoHandler(interaction, client);
   }
 

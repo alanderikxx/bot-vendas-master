@@ -279,7 +279,7 @@ async function estoqueSalvar(interaction) {
     db.prepare('INSERT INTO estoque_variante (id,variante_id,conteudo) VALUES (?,?,?)').run(uuidv4(), s.varianteId, item);
   }
   const total = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(s.varianteId).c;
-  db.prepare('UPDATE variantes_produto SET estoque=? WHERE id=?').run(total, s.varianteId);
+  db.prepare('UPDATE variantes_produto SET estoque=?, estoque_atualizado_em=strftime(\'%s\',\'now\') WHERE id=?').run(total, s.varianteId);
 
   const { atualizarPainelProduto } = require('./painelProduto');
   const paineis = db.prepare('SELECT * FROM paineis_canal WHERE produto_id=? AND ativo=1').all(variante.produto_id);
