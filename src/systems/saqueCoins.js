@@ -227,6 +227,7 @@ async function aprovarSaque(interaction, saqueId) {
 
   } catch (err) {
     console.error('[SaqueCoins] Erro ao enviar PIX:', err.message);
+    if (err.response?.data) console.error('[SaqueCoins] Response EFI:', JSON.stringify(err.response.data));
     // Reverter: devolver coins
     addCoins(saque.usuario_id, saque.coins, 'Saque cancelado — erro no PIX');
     db.prepare("UPDATE saques_coins SET status='erro', aprovado_por=?, resolvido_em=strftime('%s','now') WHERE id=?")
