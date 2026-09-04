@@ -113,13 +113,6 @@ async function iniciarCompra(interaction, produtoId, cupomCodigo = null) {
   let desconto   = 0;
   let cupomUsado = null;
 
-  // Desconto fidelidade
-  const nivelData = config.fidelidade.niveis.find(n => n.nome === (usuario.nivel || 'Bronze'));
-  if (nivelData?.desconto > 0) {
-    const d = precoFinal * nivelData.desconto / 100;
-    desconto += d; precoFinal -= d;
-  }
-
   // Cupom
   if (cupomCodigo) {
     const { valido, cupom, erro } = Cupons.validar(cupomCodigo, interaction.user.id, precoFinal);
@@ -370,13 +363,6 @@ async function iniciarCompraVariante(interaction, varianteId, client, cupomCodig
 
   let precoFinal = Number(variante.preco);
   let desconto   = 0;
-
-  // Desconto fidelidade
-  const nivelData = config.fidelidade.niveis.find(n => n.nome === (usuario.nivel || 'Bronze'));
-  if (nivelData?.desconto > 0) {
-    const d = precoFinal * nivelData.desconto / 100;
-    desconto += d; precoFinal -= d;
-  }
 
   // Cupom — busca painelId da loja para validar restrição
   let cupomUsado = null;
