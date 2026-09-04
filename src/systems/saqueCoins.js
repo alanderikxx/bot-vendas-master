@@ -23,31 +23,16 @@ const SAQUE_MINIMO_COINS = 100;                  // mínimo R$1,00
 
 // ─── Abrir modal de saque ─────────────────────────────────────────────────────
 async function abrirModalSaque(interaction) {
-  // Responder com modal IMEDIATAMENTE — Discord exige resposta em 3s
-  // Verificar cargo Owner via cache ou fetch
-  const memberRoles = interaction.member?.roles?.cache;
-  const isOwner = memberRoles?.has('1522459532469469225') || false;
-  const minimo  = isOwner ? 1 : SAQUE_MINIMO_COINS;
-
   const usuario = Usuarios.get(interaction.user.id);
   const coins   = usuario?.coins || 0;
 
-  if (coins < minimo) {
+  if (coins < 1) {
     return interaction.reply({
-      embeds: [new EmbedBuilder()
-        .setColor(config.colors.error)
-        .setTitle('❌ Saldo Insuficiente')
-        .setDescription([
-          `> Você precisa de pelo menos **${minimo} ${COIN_EMOJI}** para sacar.`,
-          `> Seu saldo atual: **${coins.toLocaleString('pt-BR')} ${COIN_EMOJI}** (R$ ${(coins/100).toFixed(2)})`,
-          isOwner ? '' : `> Acumule coins comprando produtos ou usando códigos de convite.`,
-        ].filter(Boolean).join('\n'))
-        .setTimestamp()],
+      content: `❌ Você não tem coins para sacar.`,
       ephemeral: true,
     });
   }
 
-  // Abrir modal direto sem nenhum await antes
   const modal = new ModalBuilder()
     .setCustomId('modal_saque_coins')
     .setTitle('💸 Saque de Coins via PIX');
@@ -56,7 +41,7 @@ async function abrirModalSaque(interaction) {
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
         .setCustomId('coins')
-        .setLabel(`Quantidade de coins (máx: ${coins})`)
+        .setLabel(`Quantidade de coins (você tem: ${coins})`)
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
         .setPlaceholder(`Ex: ${Math.min(coins, 1000)}`)
@@ -86,13 +71,13 @@ async function processarSolicitacaoSaque(interaction) {
   const chavePix = interaction.fields.getTextInputValue('chave_pix').trim();
   const qtdCoins = parseInt(coinsStr);
 
-  if (isNaN(qtdCoins) || qtdCoins < SAQUE_MINIMO_COINS) {
-    return interaction.editReply({ content: `❌ Mínimo de saque: **${SAQUE_MINIMO_COINS} coins** (R$ ${(SAQUE_MINIMO_COINS/100).toFixed(2)})` });
+  if (isNaN(qtdCoins) || qtdCoins < 1) {
+    return interaction.editReply({ content: `❌ Quantidade inválida. Digite um número maior que 0.` });
   }
 
   const saldoAtual = usuario.coins || 0;
   if (qtdCoins > saldoAtual) {
-    return interaction.editReply({ content: `❌ Coins insuficientes. Você tem **${saldoAtual.toLocaleString('pt-BR')} ${COIN_EMOJI}**.` });
+    return interaction.editReply({ content: `❌ Coins insuficientes. Você tem **${saldoAtual.toLocaleString('pt-BR')} ${COIN_EMOJI}** (R$ ${(saldoAtual/100).toFixed(2)}).` });
   }
 
   // Verificar saque pendente
