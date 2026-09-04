@@ -315,8 +315,7 @@ function buildConfigMenu() {
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_toggle_manut',   '🔧 Manutenção',  ButtonStyle.Danger),
-    btn('pa_home',           '🔙 Voltar',       ButtonStyle.Secondary),
+    btn('pa_home', '🔙 Voltar', ButtonStyle.Secondary),
   );
 
   return { embed, components: [row1, row2] };
