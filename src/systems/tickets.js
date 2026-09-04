@@ -506,7 +506,7 @@ async function gerarTranscricao(canal, ticket, guild) {
 
 // ─── Enviar transcrição apenas para o canal de logs ──────────────────────────
 const CANAL_TRANSCRIPT = '1530046463927648368';
-const CANAL_HTML       = '1544998939323797554';
+const CANAL_HTML       = '1545421003469885540';
 
 async function enviarTranscricao(guild, ticket, buffer) {
   if (!buffer) return null;
@@ -518,21 +518,25 @@ async function enviarTranscricao(guild, ticket, buffer) {
     const transcriptId = uuidv4();
     database.prepare('INSERT INTO transcripts (id, ticket_id, html) VALUES (?,?,?)').run(transcriptId, ticket.id, buffer.toString('utf-8'));
 
-    // Enviar arquivo HTML no canal de erros e pegar o link da mensagem
+    // Enviar arquivo HTML no canal de logs (qualquer servidor)
     let linkTranscript = null;
-    const canalHtml = guild.channels.cache.get(CANAL_HTML);
-    if (canalHtml) {
-      const att = new AttachmentBuilder(buffer, { name: `transcript-${ticket.id.slice(0,8)}.html` });
-      const msgHtml = await canalHtml.send({
-        content: `📄 \`${ticket.id.slice(0,8).toUpperCase()}\` — <@${ticket.usuario_id}>`,
-        files: [att],
-      }).catch(() => null);
-      // Link direto para a mensagem com o arquivo
-      if (msgHtml) {
-        const attachment = msgHtml.attachments.first();
-        linkTranscript = attachment?.url || msgHtml.url;
+    try {
+      const canalHtml = await guild.client.channels.fetch(CANAL_HTML).catch(() => null);
+      console.log(`[Transcript] Canal HTML: ${canalHtml ? 'ok' : 'nao encontrado'}`);
+      if (canalHtml) {
+        const att = new AttachmentBuilder(buffer, { name: `transcript-${ticket.id.slice(0,8)}.html` });
+        const msgHtml = await canalHtml.send({
+          content: `📄 \`${ticket.id.slice(0,8).toUpperCase()}\` — <@${ticket.usuario_id}>`,
+          files: [att],
+        }).catch(e => { console.error('[Transcript HTML]', e.message); return null; });
+        if (msgHtml) {
+          linkTranscript = msgHtml.attachments.first()?.url || null;
+          console.log(`[Transcript] Link: ${linkTranscript?.slice(0,60)}`);
+        }
       }
-    }
+    } catch (e) { console.error('[Transcript Canal]', e.message); }
+
+    if (!linkTranscript) console.warn('[Transcript] Sem link');
 
     // Fallback: usar URL do servidor Express
     if (!linkTranscript) {
@@ -569,9 +573,10 @@ async function enviarTranscricao(guild, ticket, buffer) {
       ));
     }
 
-    const canalTranscript = guild.channels.cache.get(CANAL_TRANSCRIPT);
+    const canalTranscript = await guild.client.channels.fetch(CANAL_TRANSCRIPT).catch(() => null);
+    console.log(`[Transcript] Canal LOG: ${canalTranscript ? 'ok' : 'nao encontrado'}`);
     if (canalTranscript) {
-      await canalTranscript.send({ embeds: [embed], components }).catch(() => {});
+      await canalTranscript.send({ embeds: [embed], components }).catch(e => console.error('[Transcript LOG]', e.message));
     }
 
     return linkTranscript;
