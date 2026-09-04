@@ -206,41 +206,31 @@ async function criarBoleto({ valor, vencimento, descricao, cliente }) {
 }
 
 // ─── Enviar PIX de saída (transferência para chave PIX do usuário) ───────────
-async function enviarPixSaida({ valor, chavePix, tipoChave = 'cpf', descricao = 'Saque de coins' }) {
+async function enviarPixSaida({ valor, chavePix, descricao = 'Saque de coins' }) {
   const token = await getToken();
   const agent = getAgent();
 
-  // Identificar tipo da chave automaticamente se não informado
-  const chaveFormatada = chavePix.replace(/\s/g, '');
-  let tipo = tipoChave;
-  if (!tipoChave || tipoChave === 'auto') {
-    if (/^\d{11}$/.test(chaveFormatada.replace(/\D/g,'')))             tipo = 'cpf';
-    else if (/^\d{14}$/.test(chaveFormatada.replace(/\D/g,'')))        tipo = 'cnpj';
-    else if (/^\+55\d{10,11}$/.test(chaveFormatada))                   tipo = 'telefone';
-    else if (/^[\w.+-]+@[\w-]+\.[\w.]+$/.test(chaveFormatada))        tipo = 'email';
-    else                                                                tipo = 'evp'; // chave aleatória
-  }
+  // Gerar ID único para o envio (máx 35 chars alfanumérico)
+  const idEnvio = `saque${Date.now()}`.slice(0, 35);
 
   const payload = {
-    valor:         Number(valor).toFixed(2),
+    valor:      Number(valor).toFixed(2),
     pagamento: {
-      tipo:  'pix',
-      chave: chaveFormatada,
+      chave: chavePix.trim(),
     },
-    descricao,
   };
 
-  // EFI: endpoint de PIX enviado
-  const res = await axios.post(
-    `${baseURL()}/v2/gn/pix/enviar`,
+  // PUT /v2/gn/pix/:idEnvio
+  const res = await axios.put(
+    `${baseURL()}/v2/gn/pix/${idEnvio}`,
     payload,
     { headers: headers(token), httpsAgent: agent }
   );
 
   return {
-    idEnvio: res.data?.idEnvio || res.data?.id,
-    status:  res.data?.status,
-    valor:   res.data?.valor || valor,
+    idEnvio:  res.data?.idEnvio || idEnvio,
+    status:   res.data?.status,
+    valor:    res.data?.valor || valor,
   };
 }
 
