@@ -342,6 +342,11 @@ module.exports = async (interaction, client) => {
     return interaction.showModal(modal);
   }
 
+  // ── Alterar quantidade na confirmação (DEVE VIR ANTES do alterar_qtd_) ──────
+  if (id.startsWith('alterar_qtd_confirm_')) {
+    return painelProdutoHandler(interaction, client);
+  }
+
   // ── Alterar quantidade do pedido ─────────────────────────────────────────────
   if (id.startsWith('alterar_qtd_')) {
     const pedidoId = id.replace('alterar_qtd_', '');
