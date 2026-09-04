@@ -24,8 +24,9 @@ const SAQUE_MINIMO_COINS = 100;                  // mínimo R$1,00
 // ─── Abrir modal de saque ─────────────────────────────────────────────────────
 async function abrirModalSaque(interaction) {
   // Responder com modal IMEDIATAMENTE — Discord exige resposta em 3s
-  // Owner não tem limite mínimo
-  const isOwner = interaction.member?.roles?.cache?.has('1522459532469469225');
+  // Verificar cargo Owner via cache ou fetch
+  const memberRoles = interaction.member?.roles?.cache;
+  const isOwner = memberRoles?.has('1522459532469469225') || false;
   const minimo  = isOwner ? 1 : SAQUE_MINIMO_COINS;
 
   const usuario = Usuarios.get(interaction.user.id);
@@ -39,7 +40,8 @@ async function abrirModalSaque(interaction) {
         .setDescription([
           `> Você precisa de pelo menos **${minimo} ${COIN_EMOJI}** para sacar.`,
           `> Seu saldo atual: **${coins.toLocaleString('pt-BR')} ${COIN_EMOJI}** (R$ ${(coins/100).toFixed(2)})`,
-        ].join('\n'))
+          isOwner ? '' : `> Acumule coins comprando produtos ou usando códigos de convite.`,
+        ].filter(Boolean).join('\n'))
         .setTimestamp()],
       ephemeral: true,
     });
@@ -54,7 +56,7 @@ async function abrirModalSaque(interaction) {
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
         .setCustomId('coins')
-        .setLabel(`Coins a sacar (min: ${minimo} | max: ${coins})`)
+        .setLabel(`Quantidade de coins (máx: ${coins})`)
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
         .setPlaceholder(`Ex: ${Math.min(coins, 1000)}`)
