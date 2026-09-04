@@ -215,6 +215,9 @@ async function enviarPixSaida({ valor, chavePix, descricao = 'Saque de coins' })
 
   const payload = {
     valor: Number(valor).toFixed(2),
+    pagador: {
+      chave: config.efi.pixKey,
+    },
     favorecido: {
       chave: chavePix.trim(),
     },
