@@ -394,7 +394,7 @@ async function atualizarPainelProduto(guild, painelId) {
       !imagemOriginal.includes('media.discordapp.net/attachments')
       ? imagemOriginal : null;
     const imagemValida = imagemBanco || imagemCDN;
-    const THUMBNAIL_PADRAO = 'https://raw.githubusercontent.com/alanderikxx/bot-vendas-master/master/assets/thumbnail.jpg';
+    const THUMBNAIL_PADRAO = `${process.env.WEBHOOK_URL?.replace('/webhook', '') || 'http://localhost:3000'}/assets/thumbnail.jpg`;
     const thumbnailUrl = imagemBanco || imagemCDN || THUMBNAIL_PADRAO;
 
     // Montar embed como JSON puro — bypassa validação shapeshift (aceita qualquer Unicode)

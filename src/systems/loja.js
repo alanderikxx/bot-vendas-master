@@ -159,7 +159,17 @@ async function iniciarCompra(interaction, produtoId, cupomCodigo = null) {
   if (ok) Pedidos.atualizar(pedidoId, { ticket_id: canal.id });
 
   if (ok && canal) {
-    await interaction.editReply({ content: `✅ Ticket aberto em ${canal}!\nEscolha o pagamento lá.` });
+    await interaction.editReply({
+      embeds: [new EmbedBuilder()
+        .setColor(config.colors.success)
+        .setTitle('✅ Ticket Aberto!')
+        .setDescription([
+          `> Seu ticket foi criado em ${canal}.`,
+          `> Escolha a forma de pagamento lá para finalizar a compra.`,
+        ].join('\n'))
+        .setTimestamp()
+        .setFooter({ text: 'Máximo Store • Ticket de Compra' })],
+    });
   } else {
     // Fallback sem ticket
     const rowPag = new ActionRowBuilder().addComponents(
@@ -418,7 +428,17 @@ async function iniciarCompraVariante(interaction, varianteId, client, cupomCodig
   if (ok) Pedidos.atualizar(pedidoId, { ticket_id: canal.id });
 
   if (ok && canal) {
-    await interaction.editReply({ content: `✅ Ticket aberto em ${canal}!\nEscolha a forma de pagamento lá.` });
+    await interaction.editReply({
+      embeds: [new EmbedBuilder()
+        .setColor(config.colors.success)
+        .setTitle('✅ Ticket Aberto!')
+        .setDescription([
+          `> Seu ticket foi criado em ${canal}.`,
+          `> Escolha a forma de pagamento lá para finalizar a compra.`,
+        ].join('\n'))
+        .setTimestamp()
+        .setFooter({ text: 'Máximo Store • Ticket de Compra' })],
+    });
   } else {
     const rowPag = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`gerar_pix_${pedidoId}`).setLabel('💠 Pagar via PIX').setStyle(ButtonStyle.Success),

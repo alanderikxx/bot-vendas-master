@@ -1,13 +1,17 @@
 const express = require('express');
-const crypto = require('crypto');
-const config = require('../config');
+const crypto  = require('crypto');
+const path    = require('path');
+const config  = require('../config');
 const { Pedidos, Usuarios, Produtos, db } = require('../database/database');
-const { log } = require('../utils/logger');
-const { Embeds, Rows } = require('../utils/embeds');
+const { log }           = require('../utils/logger');
+const { Embeds, Rows }  = require('../utils/embeds');
 const { entregarProduto } = require('../systems/loja');
 
 const app = express();
 app.use(express.json());
+
+// ─── Servir assets estáticos (thumbnail, etc.) ────────────────────────────────
+app.use('/assets', express.static(path.join(__dirname, '../../assets')));
 
 let _client = null;
 
