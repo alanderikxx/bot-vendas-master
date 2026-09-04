@@ -228,13 +228,12 @@ async function aprovarSaque(interaction, saqueId) {
   } catch (err) {
     console.error('[SaqueCoins] Erro ao enviar PIX:', err.message);
     if (err.response?.data) console.error('[SaqueCoins] Response EFI:', JSON.stringify(err.response.data));
-    // Reverter: devolver coins
-    addCoins(saque.usuario_id, saque.coins, 'Saque cancelado — erro no PIX');
-    db.prepare("UPDATE saques_coins SET status='erro', aprovado_por=?, resolvido_em=strftime('%s','now') WHERE id=?")
-      .run(interaction.user.id, saqueId);
+
+    const errMsg = err.response?.data?.erros?.[0]?.mensagem || err.response?.data?.mensagem || err.message;
+    db.prepare("UPDATE saques_coins SET status='erro' WHERE id=?").run(saqueId);
 
     return interaction.editReply({
-      content: `❌ Erro ao enviar PIX: \`${err.message.slice(0,200)}\`\nOs coins foram **devolvidos** ao usuário automaticamente.`,
+      content: `❌ Erro ao enviar PIX: \`${errMsg.slice(0, 200)}\`\n> O saque foi marcado como erro. Os coins **não foram devolvidos** — contate o suporte se necessário.`,
     });
   }
 }
