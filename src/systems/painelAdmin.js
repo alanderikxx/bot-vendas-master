@@ -41,46 +41,75 @@ function getStats() {
 // ─── Embed e rows por submenu ─────────────────────────────────────────────────
 
 async function buildHome(member) {
-  const hoje      = Math.floor(new Date().setHours(0,0,0,0)/1000);
   const lojaAberta = Config.get('loja_aberta');
   const manutencao = Config.get('manutencao') === true;
   const nomeLoja   = Config.get('nome_loja') || 'Máximo Store';
+  const metaDia    = Number(Config.get('meta_dia') || 0);
 
   const s = getStats();
 
-  const statusEmoji = manutencao ? '🔧' : '🟢';
-  const statusTxt   = manutencao ? 'Manutenção' : 'Online';
-  const ehAdmin     = member ? isAdmin(member) : true; // painel fixo sempre mostra tudo
+  const statusEmoji = manutencao ? '🔧' : (lojaAberta === false || lojaAberta === '0') ? '🔴' : '🟢';
+  const statusTxt   = manutencao ? 'Manutenção' : (lojaAberta === false || lojaAberta === '0') ? 'Fechada' : 'Online';
+
+  // Barra de progresso da meta diária
+  let metaBar = '';
+  if (metaDia > 0) {
+    const pct     = Math.min(Number(s.receita_hoje) / metaDia, 1);
+    const filled  = Math.round(pct * 10);
+    const bar     = '█'.repeat(filled) + '░'.repeat(10 - filled);
+    metaBar = `\n\`${bar}\` ${Math.round(pct*100)}% da meta R$ ${metaDia.toFixed(2)}`;
+  }
+
+  // Alertas urgentes
+  const alertas = [];
+  if (s.reembolsos > 0) alertas.push(`↩️ **${s.reembolsos}** reembolso(s) pendente(s)`);
+  if (s.pendentes  > 0) alertas.push(`⏳ **${s.pendentes}** pedido(s) pendente(s)`);
+  if (s.tickets    > 0) alertas.push(`🎫 **${s.tickets}** ticket(s) aberto(s)`);
+
+  // Estoque baixo
+  const baixo = db.prepare(`
+    SELECT COUNT(DISTINCT vp.produto_id) as c
+    FROM variantes_produto vp
+    LEFT JOIN estoque_variante ev ON ev.variante_id=vp.id AND ev.usado=0
+    WHERE vp.ativo=1
+    GROUP BY vp.id HAVING COUNT(ev.id) <= 2
+  `).get();
+  if (baixo?.c > 0) alertas.push(`📉 **${baixo.c}** variante(s) com estoque baixo`);
 
   const embed = new EmbedBuilder()
-    .setColor(manutencao ? config.colors.warning : config.colors.success)
+    .setColor(manutencao ? config.colors.warning : s.reembolsos > 0 ? config.colors.error : config.colors.success)
     .setTitle(`🎛️ ${nomeLoja} — Painel de Controle`)
+    .setDescription(alertas.length
+      ? `> ⚠️ **Alertas:**\n${alertas.map(a => `> • ${a}`).join('\n')}`
+      : `> ✅ Tudo certo! Nenhum alerta no momento.`)
     .addFields(
-      { name: '📊 Status',   value: `${statusEmoji} **${statusTxt}**\n\`${moment().tz(config.timezone).format('DD/MM HH:mm')}\``, inline: true },
-      { name: '📅 Hoje',     value: `🛒 **${s.vendas_hoje}** vendas\n💵 **R$ ${Number(s.receita_hoje).toFixed(2)}**`,             inline: true },
-      { name: '📈 Total',    value: `🛒 **${s.total_vendas}** vendas\n💵 **R$ ${Number(s.receita_total).toFixed(2)}**`,            inline: true },
-      { name: '⚡ Urgente',  value: `⏳ ${s.pendentes} pendentes\n🎫 ${s.tickets} tickets\n↩️ ${s.reembolsos} reemb.`,            inline: true },
-      { name: '📦 Produtos', value: `${s.produtos} produtos\n${s.paineis} painéis`,                                               inline: true },
-      { name: '👥 Usuários', value: `${s.usuarios} cadastrados`,                                                                  inline: true },
+      { name: '🟢 Status',   value: `${statusEmoji} **${statusTxt}**\n\`${moment().tz(config.timezone).format('DD/MM/YY HH:mm')}\``, inline: true },
+      { name: '📅 Hoje',     value: `🛒 **${s.vendas_hoje}** vendas\n💵 **R$ ${Number(s.receita_hoje).toFixed(2)}**${metaBar}`,      inline: true },
+      { name: '📈 Total',    value: `🛒 **${s.total_vendas}** vendas\n💵 **R$ ${Number(s.receita_total).toFixed(2)}**`,               inline: true },
+      { name: '📦 Catálogo', value: `**${s.produtos}** produtos\n**${s.paineis}** painéis ativos`,                                   inline: true },
+      { name: '👥 Usuários', value: `**${s.usuarios}** cadastrados`,                                                                  inline: true },
+      { name: '🎫 Suporte',  value: `**${s.tickets}** tickets\n**${s.reembolsos}** reembolsos`,                                      inline: true },
     )
-    .setFooter({ text: `Máximo Store • Painel Admin` })
+    .setFooter({ text: `${nomeLoja} • Atualizado` })
     .setTimestamp();
 
   const rows = [];
 
-  // Row 1 — Controles (sempre visível — permissão verificada no clique)
+  // Row 1 — Controles rápidos
   rows.push(new ActionRowBuilder().addComponents(
     btn('pa_toggle_manut', manutencao ? '✅ Sair Manutenção' : '🔧 Manutenção', manutencao ? ButtonStyle.Success : ButtonStyle.Danger),
-    btn('pa_atualizar',    '🔄 Atualizar', ButtonStyle.Primary),
-    btn('pa_relatorio',    '📊 Relatório', ButtonStyle.Secondary),
+    btn('pa_atualizar',    '🔄 Atualizar',  ButtonStyle.Primary),
+    btn('pa_relatorio',    '📊 Relatório',  ButtonStyle.Secondary),
+    btn('pa_estoque_baixo','📉 Estoque',    ButtonStyle.Secondary),
   ));
 
-  // Row 2 — Navegação
+  // Row 2 — Submenus
   rows.push(new ActionRowBuilder().addComponents(
     btn('pa_menu_loja',      '🛒 Loja',       ButtonStyle.Success),
     btn('pa_menu_operacoes', '⚙️ Operações',  ButtonStyle.Primary),
     btn('pa_menu_usuarios',  '👥 Usuários',   ButtonStyle.Secondary),
     btn('pa_menu_caixa',     '🎁 Caixas',     ButtonStyle.Secondary),
+    btn('pa_menu_config',    '🔧 Config',     ButtonStyle.Secondary),
   ));
 
   return { embed, components: rows };
@@ -88,36 +117,53 @@ async function buildHome(member) {
 
 // ─── Menu Loja (cargo Loja+) ──────────────────────────────────────────────────
 function buildLojaMenu() {
+  // Stats rápidas do catálogo
+  const totalProd  = db.prepare("SELECT COUNT(*) as c FROM produtos WHERE ativo=1").get().c;
+  const semEstoque = db.prepare(`
+    SELECT COUNT(DISTINCT vp.produto_id) as c FROM variantes_produto vp
+    WHERE vp.ativo=1 AND (SELECT COUNT(*) FROM estoque_variante ev WHERE ev.variante_id=vp.id AND ev.usado=0) = 0
+  `).get().c;
+  const totalCupons = db.prepare("SELECT COUNT(*) as c FROM cupons WHERE ativo=1").get().c;
+
   const embed = new EmbedBuilder()
     .setColor(config.colors.loja)
     .setTitle('🛒 Painel — Loja')
     .setDescription([
-      '> **Fluxo para criar um carrinho:**',
-      '> `1.` **➕ Criar** — define nome, canal e imagem',
-      '> `2.` **＋ Plano** — adiciona planos com preço',
+      '> **Como criar um produto do zero:**',
+      '> `1.` **➕ Criar** — define canal, nome e imagem',
+      '> `2.` **＋ Plano** — adiciona variantes com preço',
       '> `3.` **📥 Estoque** — cola os itens (1 por linha)',
       '> ',
-      '> **Cupons** podem ser criados e listados abaixo.',
+      '> Use **🏆 Top** para ver os mais vendidos.',
     ].join('\n'))
+    .addFields(
+      { name: '📦 Produtos ativos', value: `**${totalProd}**`,                                    inline: true },
+      { name: '📉 Sem estoque',     value: `**${semEstoque}** variante(s)`,                       inline: true },
+      { name: '🎟️ Cupons ativos',  value: `**${totalCupons}**`,                                  inline: true },
+    )
     .setFooter({ text: 'Máximo Store • Loja' })
     .setTimestamp();
 
   const row1 = new ActionRowBuilder().addComponents(
-    btn('pa_criar_carrinho',   '➕ Criar',         ButtonStyle.Success),
-    btn('pa_listar_carrinhos', '📋 Ver',           ButtonStyle.Primary),
-    btn('pa_editar_carrinho',  '✏️ Editar',        ButtonStyle.Primary),
-    btn('pa_add_plano',        '＋ Plano',          ButtonStyle.Secondary),
-    btn('pa_add_estoque',      '📥 Estoque',       ButtonStyle.Secondary),
+    btn('pa_criar_carrinho',   '➕ Criar',       ButtonStyle.Success),
+    btn('pa_listar_carrinhos', '📋 Ver',         ButtonStyle.Primary),
+    btn('pa_editar_carrinho',  '✏️ Editar',      ButtonStyle.Primary),
+    btn('pa_add_plano',        '＋ Plano',        ButtonStyle.Secondary),
+    btn('pa_add_estoque',      '📥 Estoque',     ButtonStyle.Secondary),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_remover_plano',    '➖ Rem Plano',     ButtonStyle.Danger),
-    btn('pa_editar_plano',     '✏️ Editar Plano',  ButtonStyle.Primary),
-    btn('pa_criar_cupom',      '🎟️ Criar Cupom',   ButtonStyle.Success),
-    btn('pa_listar_cupons',    '🎟️ Ver Cupons',    ButtonStyle.Secondary),
-    btn('pa_deletar_carrinho', '🗑️ Deletar',       ButtonStyle.Danger),
-  );  const row3 = new ActionRowBuilder().addComponents(
-    btn('pa_home', '🔙 Voltar', ButtonStyle.Secondary),
+    btn('pa_remover_plano',    '➖ Rem Plano',   ButtonStyle.Danger),
+    btn('pa_editar_plano',     '✏️ Edit Plano',  ButtonStyle.Primary),
+    btn('pa_deletar_carrinho', '🗑️ Deletar',     ButtonStyle.Danger),
+    btn('pa_estoque_baixo',    '📉 Est Baixo',   ButtonStyle.Secondary),
+    btn('pa_top_produtos',     '🏆 Top',         ButtonStyle.Secondary),
+  );
+
+  const row3 = new ActionRowBuilder().addComponents(
+    btn('pa_criar_cupom',      '🎟️ Criar Cupom', ButtonStyle.Success),
+    btn('pa_listar_cupons',    '🎟️ Ver Cupons',  ButtonStyle.Secondary),
+    btn('pa_home',             '🔙 Voltar',      ButtonStyle.Secondary),
   );
 
   return { embed, components: [row1, row2, row3] };
@@ -129,34 +175,39 @@ function buildOperacoesMenu() {
     SELECT
       (SELECT COUNT(*) FROM reembolsos WHERE status='pendente') AS reimb,
       (SELECT COUNT(*) FROM tickets WHERE status='aberto')      AS tick,
-      (SELECT COUNT(*) FROM pedidos WHERE status='pendente')    AS pend
+      (SELECT COUNT(*) FROM pedidos WHERE status='pendente')    AS pend,
+      (SELECT COUNT(*) FROM tickets WHERE status='aberto' AND tipo='compra') AS tick_compra
   `).get();
 
+  const corStatus = (s.reimb > 0 || s.tick_compra > 3) ? config.colors.error
+                  : (s.tick > 0 || s.pend > 0)         ? config.colors.warning
+                  : config.colors.success;
+
   const embed = new EmbedBuilder()
-    .setColor(s.reimb > 0 || s.tick > 0 ? config.colors.warning : config.colors.success)
+    .setColor(corStatus)
     .setTitle('⚙️ Painel — Operações')
     .setDescription('> Gerencie tickets, reembolsos, pedidos e campanhas.')
     .addFields(
-      { name: '↩️ Reembolsos', value: `${s.reimb} pendente(s)`, inline: true },
-      { name: '🎫 Tickets',    value: `${s.tick} aberto(s)`,    inline: true },
-      { name: '⏳ Pedidos',    value: `${s.pend} pendente(s)`,  inline: true },
+      { name: '↩️ Reembolsos', value: s.reimb > 0        ? `⚠️ **${s.reimb}** pendente(s)` : '✅ Nenhum', inline: true },
+      { name: '🎫 Tickets',    value: s.tick > 0          ? `🟡 **${s.tick}** aberto(s)`    : '✅ Nenhum', inline: true },
+      { name: '⏳ Pedidos',    value: s.pend > 0          ? `🟡 **${s.pend}** pendente(s)` : '✅ Nenhum', inline: true },
     )
     .setFooter({ text: 'Máximo Store • Operações' })
     .setTimestamp();
 
   const row1 = new ActionRowBuilder().addComponents(
-    btn('pa_reembolsos',  `↩️ Reembolsos (${s.reimb})`, s.reimb > 0 ? ButtonStyle.Danger  : ButtonStyle.Secondary),
-    btn('pa_tickets',     `🎫 Tickets (${s.tick})`,     s.tick > 0  ? ButtonStyle.Primary : ButtonStyle.Secondary),
-    btn('pa_pendentes',   `⏳ Pendentes (${s.pend})`,   s.pend > 0  ? ButtonStyle.Primary : ButtonStyle.Secondary),
-    btn('pa_relatorio',   '📊 Relatório',               ButtonStyle.Secondary),
-    btn('pa_buscar_pedido', '🔍 Buscar Pedido',         ButtonStyle.Secondary),
+    btn('pa_reembolsos',    `↩️ Reembolsos${s.reimb > 0 ? ` (${s.reimb})` : ''}`, s.reimb > 0 ? ButtonStyle.Danger   : ButtonStyle.Secondary),
+    btn('pa_tickets',       `🎫 Tickets${s.tick > 0     ? ` (${s.tick})`  : ''}`, s.tick > 0  ? ButtonStyle.Primary  : ButtonStyle.Secondary),
+    btn('pa_pendentes',     `⏳ Pedidos${s.pend > 0     ? ` (${s.pend})`  : ''}`, s.pend > 0  ? ButtonStyle.Primary  : ButtonStyle.Secondary),
+    btn('pa_buscar_pedido', '🔍 Buscar',  ButtonStyle.Secondary),
+    btn('pa_relatorio',     '📊 Relatório', ButtonStyle.Secondary),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_flashsale',              '⚡ Flash Sale',         ButtonStyle.Danger),
-    btn('pa_fechar_todos_tickets',   '🔒 Fechar Tickets',     ButtonStyle.Danger),
-    btn('pa_cancelar_pendentes',     '❌ Cancelar Pedidos',   ButtonStyle.Danger),
-    btn('pa_anuncio',                '📣 Anúncio DM',         ButtonStyle.Primary),
+    btn('pa_flashsale',            '⚡ Flash Sale',      ButtonStyle.Danger),
+    btn('pa_anuncio',              '📣 Anúncio DM',      ButtonStyle.Primary),
+    btn('pa_fechar_todos_tickets', '🔒 Fechar Tickets',  ButtonStyle.Danger),
+    btn('pa_cancelar_pendentes',   '❌ Cancelar Pedidos',ButtonStyle.Danger),
   );
 
   const row3 = new ActionRowBuilder().addComponents(
@@ -168,25 +219,35 @@ function buildOperacoesMenu() {
 
 // ─── Menu Usuários (Admin+) ───────────────────────────────────────────────────
 function buildUsuariosMenu() {
+  const totalUsers    = db.prepare("SELECT COUNT(*) as c FROM usuarios").get().c;
+  const bloqueados    = db.prepare("SELECT COUNT(*) as c FROM usuarios WHERE bloqueado=1").get().c;
+  const totalCoins    = db.prepare("SELECT COALESCE(SUM(coins),0) as c FROM usuarios").get().c;
+
   const embed = new EmbedBuilder()
     .setColor(config.colors.info)
     .setTitle('👥 Painel — Usuários')
     .setDescription('> Busque, gerencie coins e visualize rankings.')
+    .addFields(
+      { name: '👥 Cadastrados', value: `**${totalUsers}**`,                                     inline: true },
+      { name: '🚫 Bloqueados',  value: `**${bloqueados}**`,                                     inline: true },
+      { name: '🪙 Coins total', value: `**${Number(totalCoins).toLocaleString('pt-BR')}**`,     inline: true },
+    )
     .setFooter({ text: 'Máximo Store • Usuários' })
     .setTimestamp();
 
   const row1 = new ActionRowBuilder().addComponents(
-    btn('pa_buscar_usuario',  '🔍 Buscar',         ButtonStyle.Primary),
-    btn('pa_add_coins',       '🪙 Add Coins',       ButtonStyle.Success),
-    btn('pa_remover_coins',   '🪙 Rem Coins',       ButtonStyle.Danger),
-    btn('pa_gerar_codigos',   '🎫 Gerar Códigos',   ButtonStyle.Secondary),
-    btn('pa_coins_todos',     '🎁 Coins p/ Todos',  ButtonStyle.Success),
+    btn('pa_buscar_usuario', '🔍 Buscar',        ButtonStyle.Primary),
+    btn('pa_add_coins',      '🪙 Add Coins',      ButtonStyle.Success),
+    btn('pa_remover_coins',  '🪙 Rem Coins',      ButtonStyle.Danger),
+    btn('pa_gerar_codigos',  '🎫 Gerar Códigos',  ButtonStyle.Secondary),
+    btn('pa_coins_todos',    '🎁 Coins p/ Todos', ButtonStyle.Success),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
     btn('pa_blacklist_cpf',  '🚫 Blacklist CPF',  ButtonStyle.Danger),
-    btn('pa_ranking',        '🏆 Ranking',        ButtonStyle.Secondary),
-    btn('pa_home',           '🔙 Voltar',         ButtonStyle.Secondary),
+    btn('pa_ranking',        '🏆 Ranking',         ButtonStyle.Secondary),
+    btn('pa_top_produtos',   '🏆 Top Produtos',    ButtonStyle.Secondary),
+    btn('pa_home',           '🔙 Voltar',          ButtonStyle.Secondary),
   );
 
   return { embed, components: [row1, row2] };
@@ -226,7 +287,40 @@ function buildCaixaMenu() {
   return { embed, components: [row1, row2] };
 }
 
-// ─── Enviar/Atualizar painel ──────────────────────────────────────────────────
+// ─── Menu Config (Owner) ─────────────────────────────────────────────────────
+function buildConfigMenu() {
+  const nomeLoja   = Config.get('nome_loja')    || 'Máximo Store';
+  const metaDia    = Config.get('meta_dia')     || '0';
+  const cashback   = Config.get('cashback_pct') || '5';
+  const manutencao = Config.get('manutencao') === true ? '✅ Sim' : '❌ Não';
+
+  const embed = new EmbedBuilder()
+    .setColor(0x5865F2)
+    .setTitle('🔧 Painel — Configurações')
+    .setDescription('> Ajuste as configurações gerais da loja.')
+    .addFields(
+      { name: '🏪 Nome da loja',    value: `**${nomeLoja}**`,                  inline: true },
+      { name: '🎯 Meta diária',     value: `**R$ ${Number(metaDia).toFixed(2)}**`, inline: true },
+      { name: '🪙 Cashback %',      value: `**${cashback}%**`,                 inline: true },
+      { name: '🔧 Manutenção',      value: manutencao,                         inline: true },
+    )
+    .setFooter({ text: 'Máximo Store • Configurações' })
+    .setTimestamp();
+
+  const row1 = new ActionRowBuilder().addComponents(
+    btn('pa_cfg_nome',       '🏪 Nome Loja',    ButtonStyle.Primary),
+    btn('pa_cfg_meta',       '🎯 Meta Diária',  ButtonStyle.Primary),
+    btn('pa_cfg_cashback',   '🪙 Cashback',     ButtonStyle.Secondary),
+    btn('pa_cfg_boas_vindas','👋 Boas-vindas',  ButtonStyle.Secondary),
+  );
+
+  const row2 = new ActionRowBuilder().addComponents(
+    btn('pa_toggle_manut',   '🔧 Manutenção',  ButtonStyle.Danger),
+    btn('pa_home',           '🔙 Voltar',       ButtonStyle.Secondary),
+  );
+
+  return { embed, components: [row1, row2] };
+}
 
 async function enviarPainelFixo(guild) {
   try {
@@ -301,6 +395,11 @@ async function handlePainelAdmin(interaction, client) {
     const { embed, components } = buildCaixaMenu();
     return interaction.update({ embeds: [embed], components });
   }
+  if (id === 'pa_menu_config') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const { embed, components } = buildConfigMenu();
+    return interaction.update({ embeds: [embed], components });
+  }
   // Aliases antigos para não quebrar nada
   if (id === 'pa_menu_carrinho') {
     if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja+.', ephemeral: true });
@@ -313,9 +412,50 @@ async function handlePainelAdmin(interaction, client) {
     return interaction.update({ embeds: [embed], components });
   }
 
+  // ── Configurações da loja ─────────────────────────────────────────────────
+  if (id === 'pa_cfg_nome') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_cfg_nome').setTitle('🏪 Nome da Loja');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('nome').setLabel('Novo nome da loja').setStyle(TextInputStyle.Short).setRequired(true)
+        .setPlaceholder('Ex: Máximo Store').setValue(Config.get('nome_loja') || 'Máximo Store').setMaxLength(50)),
+    );
+    return interaction.showModal(modal);
+  }
+
+  if (id === 'pa_cfg_meta') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_cfg_meta').setTitle('🎯 Meta Diária de Vendas');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('meta').setLabel('Meta em R$ (0 para desativar)').setStyle(TextInputStyle.Short).setRequired(true)
+        .setPlaceholder('Ex: 500.00').setValue(String(Config.get('meta_dia') || '0'))),
+    );
+    return interaction.showModal(modal);
+  }
+
+  if (id === 'pa_cfg_cashback') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_cfg_cashback').setTitle('🪙 Cashback em Coins');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('pct').setLabel('% de coins por compra (ex: 5 = 5%)').setStyle(TextInputStyle.Short).setRequired(true)
+        .setPlaceholder('5').setValue(String(Config.get('cashback_pct') || '5')).setMaxLength(3)),
+    );
+    return interaction.showModal(modal);
+  }
+
+  if (id === 'pa_cfg_boas_vindas') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_cfg_boas_vindas').setTitle('👋 Mensagem de Boas-vindas');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('msg').setLabel('Mensagem (use {usuario} para mencionar)').setStyle(TextInputStyle.Paragraph).setRequired(true)
+        .setPlaceholder('Bem-vindo, {usuario}! 🎉')
+        .setValue(Config.get('msg_boas_vindas') || 'Bem-vindo, {usuario}! 🎉').setMaxLength(500)),
+    );
+    return interaction.showModal(modal);
+  }
+
   // ── Atualizar home ────────────────────────────────────────────────────────
-  if (id === 'pa_atualizar') {
-    await interaction.deferReply({ ephemeral: true });
+  if (id === 'pa_atualizar') {    await interaction.deferReply({ ephemeral: true });
     await atualizarPainelAdmin(interaction.guild);
     return interaction.editReply({ content: '✅ Painel atualizado!' });
   }
@@ -1007,6 +1147,40 @@ async function handlePainelAdmin(interaction, client) {
 async function handlePainelAdminModals(interaction, client) {
   const id = interaction.customId;
   try {
+
+  // ─── Modais de configuração ───────────────────────────────────────────────
+  if (id === 'pam_cfg_nome') {
+    await interaction.deferReply({ ephemeral: true });
+    const nome = interaction.fields.getTextInputValue('nome').trim();
+    if (!nome) return interaction.editReply({ content: '❌ Nome inválido.' });
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('nome_loja',?,'string')").run(nome);
+    _statsCache = null;
+    await atualizarPainelAdmin(interaction.guild);
+    return interaction.editReply({ content: `✅ Nome da loja alterado para **${nome}**.` });
+  }
+
+  if (id === 'pam_cfg_meta') {
+    await interaction.deferReply({ ephemeral: true });
+    const meta = parseFloat(interaction.fields.getTextInputValue('meta').trim().replace(',','.'));
+    if (isNaN(meta) || meta < 0) return interaction.editReply({ content: '❌ Valor inválido.' });
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('meta_dia',?,'string')").run(String(meta));
+    return interaction.editReply({ content: `✅ Meta diária definida para **R$ ${meta.toFixed(2)}**.` });
+  }
+
+  if (id === 'pam_cfg_cashback') {
+    await interaction.deferReply({ ephemeral: true });
+    const pct = parseInt(interaction.fields.getTextInputValue('pct').trim());
+    if (isNaN(pct) || pct < 0 || pct > 100) return interaction.editReply({ content: '❌ Valor entre 0 e 100.' });
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('cashback_pct',?,'string')").run(String(pct));
+    return interaction.editReply({ content: `✅ Cashback definido em **${pct}%** por compra.` });
+  }
+
+  if (id === 'pam_cfg_boas_vindas') {
+    await interaction.deferReply({ ephemeral: true });
+    const msg = interaction.fields.getTextInputValue('msg').trim();
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('msg_boas_vindas',?,'string')").run(msg);
+    return interaction.editReply({ content: `✅ Mensagem de boas-vindas atualizada.\n> ${msg.slice(0,100)}` });
+  }
 
   if (id === 'pam_criar_carrinho') {
     await interaction.deferReply({ ephemeral: true });
