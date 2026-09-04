@@ -19,6 +19,10 @@ let _tokenExpira = 0;
 async function getToken() {
   if (_token && Date.now() < _tokenExpira) return _token;
 
+  if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_SECRET) {
+    throw new Error('Credenciais PayPal não configuradas (PAYPAL_CLIENT_ID / PAYPAL_SECRET)');
+  }
+
   const credentials = Buffer.from(
     `${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_SECRET}`
   ).toString('base64');
