@@ -141,13 +141,11 @@ async function abrirTicket(guild, member, tipo = 'compra', dadosExtra = {}) {
       new ButtonBuilder().setCustomId(`cancelar_pedido_${dadosExtra.pedidoId}`).setLabel('❌ Cancelar').setStyle(ButtonStyle.Danger),
     );
 
-    // Row 2 — Staff
+    // Row 2 — Staff (só cargo suporte+ consegue usar)
     const rowStaff = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('ticket_assumir').setLabel('✋ Assumir').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`ticket_aceitar_sem_pag_${dadosExtra.pedidoId}`).setLabel('✅ Liberar').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('ticket_assumir').setLabel('✋ Assumir').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`ticket_aceitar_sem_pag_${dadosExtra.pedidoId}`).setLabel('✅ Liberar').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('ticket_fechar').setLabel('🔒 Fechar').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('ticket_transcript').setLabel('📄 Transcript').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('ticket_banir_fraude').setLabel('🚫 Fraude').setStyle(ButtonStyle.Danger),
     );
 
     await canal.send({
@@ -181,10 +179,8 @@ async function abrirTicket(guild, member, tipo = 'compra', dadosExtra = {}) {
     .setFooter({ text: 'Máximo Store • Sistema de Tickets' });
 
   const rowStaff2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('ticket_assumir').setLabel('✋ Assumir').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('ticket_assumir').setLabel('✋ Assumir').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('ticket_fechar').setLabel('🔒 Fechar').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('ticket_transcript').setLabel('📄 Transcrição').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('ticket_banir_fraude').setLabel('🚫 Fraude').setStyle(ButtonStyle.Danger),
   );
 
   const staffMencao = `<@&${config.roles.suporte}>`;
@@ -204,7 +200,7 @@ async function abrirTicket(guild, member, tipo = 'compra', dadosExtra = {}) {
 }
 
 // ─── Fechar ticket + gerar transcrição ────────────────────────────────────────
-async function fecharTicket(interaction, motivo = 'Finalizado') {
+async function fecharTicket(interaction, motivo = null) {
   const ticket = Tickets.get(interaction.channel.id);
   if (!ticket) return interaction.reply({ content: '❌ Este canal não é um ticket.', ephemeral: true });
   if (ticket.status === 'fechado') return interaction.reply({ content: '⚠️ Ticket já fechado.', ephemeral: true });
@@ -213,36 +209,61 @@ async function fecharTicket(interaction, motivo = 'Finalizado') {
   const ehStaff = podeVerTickets(interaction.member);
   if (!ehDono && !ehStaff) return interaction.reply({ content: '❌ Sem permissão.', ephemeral: true });
 
+  // Se não tem motivo, abrir modal para preencher
+  if (!motivo) {
+    const modal = new (require('discord.js').ModalBuilder)()
+      .setCustomId(`modal_fechar_ticket_${interaction.channel.id}`)
+      .setTitle('🔒 Fechar Ticket');
+    modal.addComponents(
+      new (require('discord.js').ActionRowBuilder)().addComponents(
+        new (require('discord.js').TextInputBuilder)()
+          .setCustomId('motivo')
+          .setLabel('Motivo do fechamento')
+          .setStyle(require('discord.js').TextInputStyle.Short)
+          .setRequired(true)
+          .setPlaceholder('Ex: Atendimento concluído, Resolvido, etc.'),
+      ),
+    );
+    return interaction.showModal(modal);
+  }
+
   await interaction.deferReply();
 
   // Atualizar banco
   Tickets.atualizar(interaction.channel.id, {
-    status:     'fechado',
+    status:      'fechado',
     fechado_por: interaction.user.id,
     motivo,
-    fechado_em: Math.floor(Date.now() / 1000),
+    fechado_em:  Math.floor(Date.now() / 1000),
   });
 
   // Gerar transcrição HTML
   const transcript = await gerarTranscricao(interaction.channel, ticket, interaction.guild);
 
-  const embedFechado = new EmbedBuilder()
+  // Embed LOG DE ATENDIMENTO no canal (formato da imagem)
+  const duracao    = Math.floor((Date.now()/1000 - ticket.criado_em) / 60);
+  const abertura   = moment.unix(ticket.criado_em).tz(config.timezone).format('DD/MM/YYYY HH:mm');
+  const fechamento = moment().tz(config.timezone).format('DD/MM/YYYY HH:mm');
+
+  const embedLog = new EmbedBuilder()
     .setColor(config.colors.dark)
-    .setTitle('🔒 Ticket Fechado')
-    .setDescription(`Fechado por <@${interaction.user.id}>\n**Motivo:** ${motivo}`)
+    .setTitle('🗂️ LOG DE ATENDIMENTO')
     .addFields(
-      { name: '🆔 Ticket', value: `\`${ticket.id.slice(0,8).toUpperCase()}\``, inline: true },
-      { name: '📅 Data',   value: moment().tz(config.timezone).format('DD/MM/YYYY HH:mm'), inline: true },
+      { name: '🔒 Ticket aberto por',   value: `<@${ticket.usuario_id}>`,       inline: true },
+      { name: '🔒 Ticket fechado por',  value: `<@${interaction.user.id}>`,     inline: true },
+      { name: '🆔 ID do Ticket',        value: ticket.id,                       inline: false },
+      { name: '🕐 Horário de abertura', value: abertura,                        inline: true },
+      { name: '🕐 Horário de fechamento', value: fechamento,                    inline: true },
+      { name: '⚠️ Motivo do Ticket',    value: ticket.tipo.toUpperCase(),       inline: false },
+      { name: '📝 Considerações finais', value: motivo,                         inline: false },
     )
+    .setFooter({ text: 'Ticket apagado com transcript' })
     .setTimestamp();
 
-  await interaction.editReply({ embeds: [embedFechado] });
+  await interaction.editReply({ embeds: [embedLog] });
 
-  // Enviar transcrição pro cliente
+  // Enviar transcript para o canal de logs (não para o cliente)
   await enviarTranscricao(interaction.guild, ticket, transcript);
-
-  // Avaliação
-  await pedirAvaliacao(interaction.guild, ticket);
 
   await log('ticket_fechado', {
     executor:  interaction.user.id,
@@ -453,74 +474,47 @@ async function gerarTranscricao(canal, ticket, guild) {
   return Buffer.from(html, 'utf-8');
 }
 
-// ─── Enviar transcrição ao cliente ────────────────────────────────────────────
+// ─── Enviar transcrição apenas para o canal de logs ──────────────────────────
+const CANAL_TRANSCRIPT = '1530046463927648368';
+
 async function enviarTranscricao(guild, ticket, buffer) {
   if (!buffer) return;
   try {
-    const member = await guild.members.fetch(ticket.usuario_id).catch(() => null);
-    if (!member) return;
+    const canalTranscript = guild.channels.cache.get(CANAL_TRANSCRIPT);
+    if (!canalTranscript) return;
 
-    const att  = new AttachmentBuilder(buffer, { name: `transcript-${ticket.id.slice(0,8)}.html` });
-    const duracao = Math.floor((Date.now()/1000 - ticket.criado_em) / 60);
-    const tipoEmoji = { compra:'🛒', suporte:'🆘', entrega:'📦', afiliado:'🤝', reclamacao:'⚠️', saque:'💸' };
+    const att      = new AttachmentBuilder(buffer, { name: `transcript-${ticket.id.slice(0,8)}.html` });
+    const duracao  = Math.floor((Date.now()/1000 - ticket.criado_em) / 60);
+    const abertura = moment.unix(ticket.criado_em).tz(config.timezone).format('DD/MM/YYYY HH:mm');
+    const atendente = ticket.atendente ? `<@${ticket.atendente}>` : 'Não assumido';
 
     const embed = new EmbedBuilder()
-      .setColor(config.colors.primary)
-      .setTitle('📄 Transcrição do Ticket')
-      .setDescription(`> Seu atendimento foi encerrado. Segue o transcript completo.`)
+      .setColor(config.colors.dark)
+      .setTitle('📄 Transcript — Ticket Encerrado')
       .addFields(
-        { name: `${tipoEmoji[ticket.tipo] || '🎫'} Tipo`,  value: ticket.tipo.toUpperCase(),                                        inline: true },
-        { name: '🆔 Ticket',                               value: `\`${ticket.id.slice(0,8).toUpperCase()}\``,                      inline: true },
-        { name: '⏱️ Duração',                              value: `${duracao} min`,                                                 inline: true },
-        { name: '📅 Aberto em',                            value: `<t:${ticket.criado_em}:F>`,                                      inline: false },
+        { name: '👤 Aberto por',     value: `<@${ticket.usuario_id}>`,         inline: true },
+        { name: '🔒 Fechado por',    value: ticket.fechado_por ? `<@${ticket.fechado_por}>` : '—', inline: true },
+        { name: '✋ Atendente',      value: atendente,                          inline: true },
+        { name: '🆔 Ticket',         value: `\`${ticket.id.slice(0,8).toUpperCase()}\``, inline: true },
+        { name: '📋 Tipo',           value: ticket.tipo.toUpperCase(),          inline: true },
+        { name: '⏱️ Duração',        value: `${duracao} min`,                   inline: true },
+        { name: '📅 Aberto em',      value: abertura,                           inline: false },
+        { name: '📝 Motivo',         value: ticket.motivo || '—',               inline: false },
       )
       .setTimestamp()
-      .setFooter({ text: 'Máximo Store • O arquivo HTML abre em qualquer navegador' });
+      .setFooter({ text: 'Máximo Store • Clique em Abrir Transcript para ver o HTML' });
 
-    await member.send({ embeds: [embed], files: [att] }).catch(() => {});
+    const rowTranscript = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('📂 Abrir Transcript')
+        .setStyle(ButtonStyle.Link)
+        .setURL(`https://discord.com/channels/${guild.id}/${CANAL_TRANSCRIPT}`),
+    );
 
-    // Log
-    const canalLogs = guild.channels.cache.get(config.channels.logs);
-    if (canalLogs) {
-      await canalLogs.send({
-        embeds: [new EmbedBuilder()
-          .setColor(config.colors.dark)
-          .setTitle('📄 Transcript Gerado')
-          .setDescription(`Ticket \`${ticket.id.slice(0,8).toUpperCase()}\` — <@${ticket.usuario_id}>`)
-          .setTimestamp()],
-        files: [new AttachmentBuilder(buffer, { name: `transcript-${ticket.id.slice(0,8)}.html` })],
-      }).catch(() => {});
-    }
+    await canalTranscript.send({ embeds: [embed], files: [att], components: [rowTranscript] }).catch(() => {});
   } catch (err) {
     console.error('[Transcrição]', err.message);
   }
-}
-
-// ─── Pedir avaliação ──────────────────────────────────────────────────────────
-async function pedirAvaliacao(guild, ticket) {
-  try {
-    const member = await guild.members.fetch(ticket.usuario_id).catch(() => null);
-    if (!member) return;
-
-    const row = new ActionRowBuilder().addComponents(
-      ...([1,2,3,4,5].map(n =>
-        new ButtonBuilder()
-          .setCustomId(`aval_ticket_${ticket.id}_${n}`)
-          .setLabel('⭐'.repeat(n))
-          .setStyle(n >= 4 ? ButtonStyle.Success : n === 3 ? ButtonStyle.Primary : ButtonStyle.Danger)
-      ))
-    );
-
-    await member.send({
-      embeds: [new EmbedBuilder()
-        .setColor(config.colors.gold)
-        .setTitle('⭐ Como foi seu atendimento?')
-        .setDescription('Avalie o atendimento do ticket. Isso nos ajuda a melhorar!')
-        .setTimestamp()
-        .setFooter({ text: 'Máximo Store' })],
-      components: [row],
-    }).catch(() => {});
-  } catch {}
 }
 
 // ─── Gerar transcrição manual (botão) ────────────────────────────────────────

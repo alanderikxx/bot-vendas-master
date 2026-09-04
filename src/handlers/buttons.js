@@ -509,13 +509,33 @@ module.exports = async (interaction, client) => {
     return interaction.showModal(modal);
   }
 
-  // ── Avaliação de ticket ──────────────────────────────────────────────────────
+  // ── Avaliação de ticket — redireciona para modal de avaliação unificado ──────
   if (id.startsWith('aval_ticket_')) {
-    const parts = id.split('_'); // aval_ticket_{ticketId}_{nota}
-    const nota = parseInt(parts[parts.length - 1]);
+    const parts    = id.split('_');
+    const nota     = parseInt(parts[parts.length - 1]);
     const ticketId = parts.slice(2, parts.length - 1).join('_');
+    // Salvar nota no banco
     db.prepare("UPDATE tickets SET avaliacao=? WHERE id=?").run(nota, ticketId);
-    return interaction.reply({ content: `⭐ Avaliação registrada: ${'⭐'.repeat(nota)}. Obrigado pelo feedback!`, ephemeral: true });
+    // Publicar no webhook de avaliações
+    try {
+      const { WebhookClient, EmbedBuilder: EB } = require('discord.js');
+      const hook  = new WebhookClient({ url: 'https://discord.com/api/webhooks/1544916846371672138/PbUH8Q_bYhoWuaNKPkgIcweud8UDCbMjMlwPpI6f1eb1hv8SGdE1Lvjg-7YW7FGs9AGa' });
+      const stars = '⭐'.repeat(nota) + '☆'.repeat(5 - nota);
+      const cor   = nota >= 4 ? 0x57F287 : nota === 3 ? 0xFEE75C : 0xED4245;
+      const avatar = interaction.user.displayAvatarURL({ size: 64 });
+      const embed = new EB()
+        .setColor(cor)
+        .setAuthor({ name: interaction.user.username, iconURL: avatar })
+        .setTitle(`${stars} Avaliação de Atendimento`)
+        .addFields(
+          { name: '⭐ Nota',    value: `**${nota}/5**`,                                   inline: true },
+          { name: '🎫 Ticket', value: `\`${ticketId.slice(0,8).toUpperCase()}\``,        inline: true },
+        )
+        .setTimestamp()
+        .setFooter({ text: 'Máximo Store • Avaliações de Atendimento' });
+      await hook.send({ embeds: [embed] }).catch(() => {});
+    } catch {}
+    return interaction.reply({ content: `⭐ Avaliação **${nota}/5** registrada! Obrigado pelo feedback.`, ephemeral: true });
   }
 
   // ── Carrinho ─────────────────────────────────────────────────────────────────
@@ -546,8 +566,20 @@ module.exports = async (interaction, client) => {
   }
 
   // ── Tickets ──────────────────────────────────────────────────────────────────
-  if (id === 'ticket_fechar') return fecharTicket(interaction);
-  if (id === 'ticket_assumir') return assumirTicket(interaction);
+  if (id === 'ticket_fechar') {
+    const { podeVerTickets } = require('../utils/permissions');
+    if (!podeVerTickets(interaction.member) && interaction.user.id !== require('../database/database').Tickets.get(interaction.channel?.id)?.usuario_id) {
+      return interaction.reply({ content: '❌ Apenas cargo Suporte+ pode fechar tickets.', ephemeral: true });
+    }
+    return fecharTicket(interaction);
+  }
+  if (id === 'ticket_assumir') {
+    const { podeVerTickets } = require('../utils/permissions');
+    if (!podeVerTickets(interaction.member)) {
+      return interaction.reply({ content: '❌ Apenas cargo Suporte+ pode assumir tickets.', ephemeral: true });
+    }
+    return assumirTicket(interaction);
+  }
   if (id === 'ticket_transcript') return gerarTranscript(interaction);
 
   if (id.startsWith('ticket_pagar_')) {

@@ -12,6 +12,13 @@ const _webhookAvaliacoes = new WebhookClient({ url: 'https://discord.com/api/web
 module.exports = async (interaction, client) => {
   const id = interaction.customId;
 
+  // ── Modal fechar ticket ───────────────────────────────────────────────────
+  if (id.startsWith('modal_fechar_ticket_')) {
+    const motivo = interaction.fields.getTextInputValue('motivo').trim();
+    const { fecharTicket } = require('../systems/tickets');
+    return fecharTicket(interaction, motivo);
+  }
+
   // ── Modal quantidade na tela de confirmação ──────────────────────────────
   if (id.startsWith('modal_qtd_confirm_')) {
     const handler = require('../handlers/painelProdutoHandler');
