@@ -269,7 +269,7 @@ async function fecharTicket(interaction, motivo = null) {
   // Enviar transcript para o canal de logs
   await enviarTranscricao(interaction.guild, ticketAtualizado, transcript);
 
-  // Enviar DM para o cliente com log resumido + produtos baratos + botão transcript
+  // Enviar DM para o cliente APÓS o transcript estar salvo
   try {
     const member = await interaction.guild?.members.fetch(ticket.usuario_id).catch(() => null);
     if (member) {
@@ -280,10 +280,10 @@ async function fecharTicket(interaction, motivo = null) {
         .setTitle('🔒 Seu ticket foi encerrado')
         .setDescription('> Seu atendimento foi finalizado. Abaixo o resumo:')
         .addFields(
-          { name: '🆔 Ticket',        value: `\`${ticket.id.slice(0,8).toUpperCase()}\``,                    inline: true },
-          { name: '✋ Atendente',     value: ticket.atendente ? `<@${ticket.atendente}>` : '—',              inline: true },
-          { name: '🔒 Fechado por',   value: `<@${interaction.user.id}>`,                                   inline: true },
-          { name: '📝 Motivo',        value: motivo,                                                         inline: false },
+          { name: '🆔 Ticket',      value: `\`${ticket.id.slice(0,8).toUpperCase()}\``,   inline: true },
+          { name: '✋ Atendente',   value: ticketAtualizado.atendente ? `<@${ticketAtualizado.atendente}>` : '—', inline: true },
+          { name: '🔒 Fechado por', value: `<@${interaction.user.id}>`,                   inline: true },
+          { name: '📝 Motivo',      value: motivo,                                         inline: false },
         )
         .setTimestamp()
         .setFooter({ text: 'Máximo Store • Obrigado pelo contato!' });
@@ -292,13 +292,17 @@ async function fecharTicket(interaction, motivo = null) {
       const transcriptBtn = await buscarBotaoTranscript(ticket.id);
       if (transcriptBtn) rowDm.addComponents(transcriptBtn);
 
-      await member.send({ embeds: [embedDm], components: rowDm.components.length ? [rowDm] : [] }).catch(() => {});
+      await member.send({
+        embeds: [embedDm],
+        components: rowDm.components.length ? [rowDm] : [],
+      }).catch(() => {});
 
-      // Enviar sugestão de produtos
       const embedSugestao = montarEmbedSugestao();
       if (embedSugestao) await member.send({ embeds: [embedSugestao] }).catch(() => {});
     }
-  } catch {}
+  } catch (err) {
+    console.error('[Ticket DM]', err.message);
+  }
 
   await log('ticket_fechado', {
     executor:  interaction.user.id,
@@ -547,10 +551,11 @@ async function enviarTranscricao(guild, ticket, buffer) {
     const htmlStr      = buffer.toString('utf-8');
     database.prepare('INSERT INTO transcripts (id, ticket_id, html) VALUES (?,?,?)').run(transcriptId, ticket.id, htmlStr);
 
-    // URL pública do transcript — Railway injeta RAILWAY_PUBLIC_DOMAIN automaticamente
-    const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN
-      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-      : process.env.WEBHOOK_URL?.replace('/webhook', '').replace(':3000', '').replace(':8080', '') || 'http://localhost:3000';
+    // URL pública do transcript — usar BOT_URL configurado manualmente
+    const baseUrl = process.env.BOT_URL
+      || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null)
+      || process.env.WEBHOOK_URL?.replace('/webhook', '').replace(':3000', '').replace(':8080', '')
+      || 'http://localhost:3000';
     const urlTranscript = `${baseUrl}/transcript/${transcriptId}`;
 
     const duracao   = Math.floor((Date.now()/1000 - ticket.criado_em) / 60);

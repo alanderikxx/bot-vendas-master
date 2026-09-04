@@ -876,9 +876,10 @@ async function buscarBotaoTranscript(ticketId) {
   try {
     const row = db.prepare('SELECT id FROM transcripts WHERE ticket_id=? ORDER BY criado_em DESC LIMIT 1').get(ticketId);
     if (!row) return null;
-    const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN
-      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-      : process.env.WEBHOOK_URL?.replace('/webhook', '') || 'http://localhost:3000';
+    const baseUrl = process.env.BOT_URL
+      || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null)
+      || process.env.WEBHOOK_URL?.replace('/webhook', '').replace(':3000', '').replace(':8080', '')
+      || 'http://localhost:3000';
     return new ButtonBuilder()
       .setLabel('📂 Ver Transcript')
       .setStyle(ButtonStyle.Link)
