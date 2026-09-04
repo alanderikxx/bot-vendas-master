@@ -214,9 +214,7 @@ async function enviarPixSaida({ valor, chavePix, descricao = 'Saque de coins' })
   const idEnvio = `saque${Date.now()}`.slice(0, 35);
 
   const payload = {
-    valor: {
-      original: Number(valor).toFixed(2),
-    },
+    valor: Number(valor).toFixed(2),
     favorecido: {
       chave: chavePix.trim(),
     },
