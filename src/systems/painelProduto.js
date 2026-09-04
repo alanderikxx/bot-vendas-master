@@ -394,6 +394,8 @@ async function atualizarPainelProduto(guild, painelId) {
       !imagemOriginal.includes('media.discordapp.net/attachments')
       ? imagemOriginal : null;
     const imagemValida = imagemBanco || imagemCDN;
+    const THUMBNAIL_PADRAO = 'https://raw.githubusercontent.com/alanderikxx/bot-vendas-master/master/assets/thumbnail.jpg';
+    const thumbnailUrl = imagemBanco || imagemCDN || THUMBNAIL_PADRAO;
 
     // Montar embed como JSON puro — bypassa validação shapeshift (aceita qualquer Unicode)
     // Formatar descrição com blockquote (>) em cada linha
@@ -410,11 +412,9 @@ async function atualizarPainelProduto(guild, painelId) {
       description: descricaoFormatada,
       timestamp:   new Date().toISOString(),
       footer:      { text: 'Máximo Store • Selecione um plano para comprar' },
+      thumbnail:   { url: thumbnailUrl },
     };
     if (imagemValida) embedData.image = { url: imagemValida };
-
-    // Thumbnail (imagem pequena no canto direito) — usa mesma URL ou ícone padrão
-    if (imagemValida) embedData.thumbnail = { url: imagemValida };
 
     // Footer com data da última atualização de estoque
     const ultimaAtt = db.prepare('SELECT MAX(estoque_atualizado_em) as dt FROM variantes_produto WHERE produto_id=? AND ativo=1').get(painel.produto_id);
