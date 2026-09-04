@@ -838,3 +838,11 @@ function iniciarPollingPagamento(pedidoId, txid, guild, client) {
     } catch (err) { console.error('[Polling PIX]', err.message); }
   }, 50000);
 }
+
+module.exports = {
+  mostrarLoja, mostrarProduto,
+  iniciarCompra, iniciarCompraVariante,
+  gerarPixPedido, pagarComCoins, liberarPedidoManual,
+  iniciarCompraBoleto, processarCompraBoleto,
+  entregarProduto, processarEntrega, iniciarPollingPagamento,
+};
