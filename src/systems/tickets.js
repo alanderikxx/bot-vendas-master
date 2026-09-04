@@ -241,6 +241,9 @@ async function fecharTicket(interaction, motivo = null) {
   // Gerar transcrição HTML
   const transcript = await gerarTranscricao(interaction.channel, ticket, interaction.guild);
 
+  // Buscar ticket atualizado (com fechado_por já salvo)
+  const ticketAtualizado = Tickets.get(interaction.channel.id) || { ...ticket, fechado_por: interaction.user.id, motivo };
+
   // Embed LOG DE ATENDIMENTO no canal (formato da imagem)
   const duracao    = Math.floor((Date.now()/1000 - ticket.criado_em) / 60);
   const abertura   = moment.unix(ticket.criado_em).tz(config.timezone).format('DD/MM/YYYY HH:mm');
@@ -263,8 +266,39 @@ async function fecharTicket(interaction, motivo = null) {
 
   await interaction.editReply({ embeds: [embedLog] });
 
-  // Enviar transcript para o canal de logs (não para o cliente)
-  await enviarTranscricao(interaction.guild, ticket, transcript);
+  // Enviar transcript para o canal de logs
+  await enviarTranscricao(interaction.guild, ticketAtualizado, transcript);
+
+  // Enviar DM para o cliente com log resumido + produtos baratos + botão transcript
+  try {
+    const member = await interaction.guild?.members.fetch(ticket.usuario_id).catch(() => null);
+    if (member) {
+      const { montarEmbedSugestao, buscarBotaoTranscript } = require('./loja');
+
+      const embedDm = new EmbedBuilder()
+        .setColor(config.colors.dark)
+        .setTitle('🔒 Seu ticket foi encerrado')
+        .setDescription('> Seu atendimento foi finalizado. Abaixo o resumo:')
+        .addFields(
+          { name: '🆔 Ticket',        value: `\`${ticket.id.slice(0,8).toUpperCase()}\``,                    inline: true },
+          { name: '✋ Atendente',     value: ticket.atendente ? `<@${ticket.atendente}>` : '—',              inline: true },
+          { name: '🔒 Fechado por',   value: `<@${interaction.user.id}>`,                                   inline: true },
+          { name: '📝 Motivo',        value: motivo,                                                         inline: false },
+        )
+        .setTimestamp()
+        .setFooter({ text: 'Máximo Store • Obrigado pelo contato!' });
+
+      const rowDm = new ActionRowBuilder();
+      const transcriptBtn = await buscarBotaoTranscript(ticket.id);
+      if (transcriptBtn) rowDm.addComponents(transcriptBtn);
+
+      await member.send({ embeds: [embedDm], components: rowDm.components.length ? [rowDm] : [] }).catch(() => {});
+
+      // Enviar sugestão de produtos
+      const embedSugestao = montarEmbedSugestao();
+      if (embedSugestao) await member.send({ embeds: [embedSugestao] }).catch(() => {});
+    }
+  } catch {}
 
   await log('ticket_fechado', {
     executor:  interaction.user.id,
@@ -513,8 +547,10 @@ async function enviarTranscricao(guild, ticket, buffer) {
     const htmlStr      = buffer.toString('utf-8');
     database.prepare('INSERT INTO transcripts (id, ticket_id, html) VALUES (?,?,?)').run(transcriptId, ticket.id, htmlStr);
 
-    // URL para abrir o transcript no browser
-    const baseUrl    = process.env.WEBHOOK_URL?.replace('/webhook', '') || 'http://localhost:3000';
+    // URL pública do transcript — Railway injeta RAILWAY_PUBLIC_DOMAIN automaticamente
+    const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN
+      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+      : process.env.WEBHOOK_URL?.replace('/webhook', '').replace(':3000', '').replace(':8080', '') || 'http://localhost:3000';
     const urlTranscript = `${baseUrl}/transcript/${transcriptId}`;
 
     const duracao   = Math.floor((Date.now()/1000 - ticket.criado_em) / 60);
