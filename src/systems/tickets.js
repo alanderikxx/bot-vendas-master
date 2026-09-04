@@ -266,13 +266,11 @@ async function fecharTicket(interaction, motivo = null) {
 
   await interaction.editReply({ embeds: [embedLog] });
 
-  // Enviar transcript para o canal de logs
-  await enviarTranscricao(interaction.guild, ticketAtualizado, transcript);
-
-  // Enviar DM para o cliente APÓS o transcript estar salvo
+  // Enviar DM para o cliente com tudo em uma mensagem só
+  const linkTranscript = await enviarTranscricao(interaction.guild, ticketAtualizado, transcript);
   try {
     const { enviarDmFechamento } = require('../utils/dmHelpers');
-    await enviarDmFechamento(interaction.guild, ticketAtualizado, motivo, interaction.user.id);
+    await enviarDmFechamento(interaction.guild, ticketAtualizado, motivo, interaction.user.id, linkTranscript);
   } catch (err) {
     console.error('[Ticket DM]', err.message);
   }
@@ -508,28 +506,41 @@ async function gerarTranscricao(canal, ticket, guild) {
 
 // ─── Enviar transcrição apenas para o canal de logs ──────────────────────────
 const CANAL_TRANSCRIPT = '1530046463927648368';
+const CANAL_HTML       = '1544998939323797554';
 
 async function enviarTranscricao(guild, ticket, buffer) {
-  if (!buffer) return;
+  if (!buffer) return null;
   try {
-    const canalTranscript = guild.channels.cache.get(CANAL_TRANSCRIPT);
-    if (!canalTranscript) return;
+    const { db: database } = require('../database/database');
+    const { v4: uuidv4 }   = require('uuid');
 
-    const { db: database }  = require('../database/database');
-    const { v4: uuid }       = require('uuid');
-    const { v4: uuidv4 }     = require('uuid');
-
-    // Salvar HTML no banco
+    // Salvar HTML no banco (para rota Express como fallback)
     const transcriptId = uuidv4();
-    const htmlStr      = buffer.toString('utf-8');
-    database.prepare('INSERT INTO transcripts (id, ticket_id, html) VALUES (?,?,?)').run(transcriptId, ticket.id, htmlStr);
+    database.prepare('INSERT INTO transcripts (id, ticket_id, html) VALUES (?,?,?)').run(transcriptId, ticket.id, buffer.toString('utf-8'));
 
-    // URL pública do transcript — usar BOT_URL configurado manualmente
-    const baseUrl = process.env.BOT_URL
-      || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null)
-      || process.env.WEBHOOK_URL?.replace('/webhook', '').replace(':3000', '').replace(':8080', '')
-      || 'http://localhost:3000';
-    const urlTranscript = `${baseUrl}/transcript/${transcriptId}`;
+    // Enviar arquivo HTML no canal de erros e pegar o link da mensagem
+    let linkTranscript = null;
+    const canalHtml = guild.channels.cache.get(CANAL_HTML);
+    if (canalHtml) {
+      const att = new AttachmentBuilder(buffer, { name: `transcript-${ticket.id.slice(0,8)}.html` });
+      const msgHtml = await canalHtml.send({
+        content: `📄 \`${ticket.id.slice(0,8).toUpperCase()}\` — <@${ticket.usuario_id}>`,
+        files: [att],
+      }).catch(() => null);
+      // Link direto para a mensagem com o arquivo
+      if (msgHtml) {
+        const attachment = msgHtml.attachments.first();
+        linkTranscript = attachment?.url || msgHtml.url;
+      }
+    }
+
+    // Fallback: usar URL do servidor Express
+    if (!linkTranscript) {
+      const baseUrl = process.env.BOT_URL
+        || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null)
+        || null;
+      if (baseUrl) linkTranscript = `${baseUrl}/transcript/${transcriptId}`;
+    }
 
     const duracao   = Math.floor((Date.now()/1000 - ticket.criado_em) / 60);
     const abertura  = moment.unix(ticket.criado_em).tz(config.timezone).format('DD/MM/YYYY HH:mm');
@@ -539,37 +550,34 @@ async function enviarTranscricao(guild, ticket, buffer) {
       .setColor(config.colors.dark)
       .setTitle('📄 Transcript — Ticket Encerrado')
       .addFields(
-        { name: '👤 Aberto por',     value: `<@${ticket.usuario_id}>`,                                      inline: true },
-        { name: '🔒 Fechado por',    value: ticket.fechado_por ? `<@${ticket.fechado_por}>` : '—',          inline: true },
-        { name: '✋ Atendente',      value: atendente,                                                       inline: true },
-        { name: '🆔 Ticket',         value: `\`${ticket.id.slice(0,8).toUpperCase()}\``,                    inline: true },
-        { name: '📋 Tipo',           value: ticket.tipo.toUpperCase(),                                       inline: true },
-        { name: '⏱️ Duração',        value: `${duracao} min`,                                                inline: true },
-        { name: '📅 Aberto em',      value: abertura,                                                        inline: false },
-        { name: '📝 Motivo',         value: ticket.motivo || '—',                                            inline: false },
+        { name: '👤 Aberto por',  value: `<@${ticket.usuario_id}>`,                         inline: true },
+        { name: '🔒 Fechado por', value: ticket.fechado_por ? `<@${ticket.fechado_por}>` : '—', inline: true },
+        { name: '✋ Atendente',   value: atendente,                                           inline: true },
+        { name: '🆔 Ticket',      value: `\`${ticket.id.slice(0,8).toUpperCase()}\``,        inline: true },
+        { name: '📋 Tipo',        value: ticket.tipo.toUpperCase(),                           inline: true },
+        { name: '⏱️ Duração',     value: `${duracao} min`,                                    inline: true },
+        { name: '📅 Aberto em',   value: abertura,                                            inline: false },
+        { name: '📝 Motivo',      value: ticket.motivo || '—',                                inline: false },
       )
       .setTimestamp()
-      .setFooter({ text: 'Máximo Store • Clique no botão abaixo para abrir o transcript' });
+      .setFooter({ text: 'Máximo Store • Transcript disponível no botão abaixo' });
 
-    // Botão que abre o transcript direto no browser (sem download)
-    const rowBtn = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setLabel('📂 Abrir Transcript')
-        .setStyle(ButtonStyle.Link)
-        .setURL(urlTranscript),
-    );
-
-    await canalTranscript.send({ embeds: [embed], components: [rowBtn] }).catch(() => {});
-
-    // Enviar arquivo HTML no canal de erros/logs para backup
-    const CANAL_ERROS = '1544998939323797554';
-    const canalErros = guild.channels.cache.get(CANAL_ERROS);
-    if (canalErros) {
-      const att = new AttachmentBuilder(buffer, { name: `transcript-${ticket.id.slice(0,8)}.html` });
-      await canalErros.send({ content: `📄 Transcript ticket \`${ticket.id.slice(0,8).toUpperCase()}\` — <@${ticket.usuario_id}>`, files: [att] }).catch(() => {});
+    const components = [];
+    if (linkTranscript) {
+      components.push(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setLabel('📂 Abrir Transcript').setStyle(ButtonStyle.Link).setURL(linkTranscript),
+      ));
     }
+
+    const canalTranscript = guild.channels.cache.get(CANAL_TRANSCRIPT);
+    if (canalTranscript) {
+      await canalTranscript.send({ embeds: [embed], components }).catch(() => {});
+    }
+
+    return linkTranscript;
   } catch (err) {
     console.error('[Transcrição]', err.message);
+    return null;
   }
 }
 

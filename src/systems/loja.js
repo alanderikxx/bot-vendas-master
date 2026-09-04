@@ -601,8 +601,8 @@ async function entregarProduto(pedido, client) {
     );
 
     // Buscar transcript do ticket se existir
-    const { buscarBotaoTranscript, montarEmbedSugestao } = require('../utils/dmHelpers');
-    const transcriptBtn = await buscarBotaoTranscript(pedido.ticket_id);
+    const { criarBotaoTranscript, montarEmbedSugestao } = require('../utils/dmHelpers');
+    const transcriptBtn = criarBotaoTranscript(null); // sem transcript na entrega ainda
     if (transcriptBtn) row.addComponents(transcriptBtn);
 
     // Embed de sugestão dos 3 produtos mais baratos
