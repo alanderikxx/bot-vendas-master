@@ -23,13 +23,13 @@ const SAQUE_MINIMO_COINS = 100;                  // mínimo R$1,00
 
 // ─── Abrir modal de saque ─────────────────────────────────────────────────────
 async function abrirModalSaque(interaction) {
-  const usuario = Usuarios.get(interaction.user.id);
-  const coins   = usuario?.coins || 0;
-  const valorMaxR$ = (coins / COINS_POR_REAL).toFixed(2);
-
+  // Responder com modal IMEDIATAMENTE — Discord exige resposta em 3s
   // Owner não tem limite mínimo
   const isOwner = interaction.member?.roles?.cache?.has('1522459532469469225');
   const minimo  = isOwner ? 1 : SAQUE_MINIMO_COINS;
+
+  const usuario = Usuarios.get(interaction.user.id);
+  const coins   = usuario?.coins || 0;
 
   if (coins < minimo) {
     return interaction.reply({
@@ -45,9 +45,10 @@ async function abrirModalSaque(interaction) {
     });
   }
 
+  // Abrir modal direto sem nenhum await antes
   const modal = new ModalBuilder()
     .setCustomId('modal_saque_coins')
-    .setTitle(`💸 Saque de Coins`);
+    .setTitle('💸 Saque de Coins via PIX');
 
   modal.addComponents(
     new ActionRowBuilder().addComponents(
