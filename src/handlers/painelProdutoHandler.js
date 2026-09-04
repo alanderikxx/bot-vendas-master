@@ -49,14 +49,15 @@ function buildConfirmEmbed(varianteId, qtd) {
 module.exports = async (interaction, client) => {
   const id = interaction.customId;
 
-  try {
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.deferReply({ ephemeral: true });
-    }
-  } catch {}
-
   // ── Select: usuário escolheu um plano ─────────────────────────────────────
   if (id.startsWith('painel_selecionar_')) {
+    // Select menu precisa de defer
+    try {
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.deferReply({ ephemeral: true });
+      }
+    } catch {}
+
     const varianteId = interaction.values[0];
     const variante   = db.prepare('SELECT * FROM variantes_produto WHERE id=? AND ativo=1').get(varianteId);
     if (!variante) return interaction.editReply({ content: '❌ Plano não encontrado.' });
@@ -97,6 +98,7 @@ module.exports = async (interaction, client) => {
 
   // ── Botão: alterar quantidade na tela de confirmação ──────────────────────
   if (id.startsWith('alterar_qtd_confirm_')) {
+    // Modal NÃO pode ter defer antes — responde direto com showModal
     const varianteId = id.replace('alterar_qtd_confirm_', '');
     const sessao     = qtdSessao.get(interaction.user.id) || { varianteId, qtd: 1 };
     const estoque    = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(varianteId)?.c || 0;
@@ -146,6 +148,9 @@ module.exports = async (interaction, client) => {
 
   // ── Botão: confirmar compra — some o embed e abre o ticket ────────────────
   if (id.startsWith('confirmar_compra_var_')) {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply({ ephemeral: true }).catch(() => {});
+    }
     const varianteId = id.replace('confirmar_compra_var_', '');
     const sessao     = qtdSessao.get(interaction.user.id) || { varianteId, qtd: 1 };
     const qtd        = sessao.qtd || 1;
@@ -165,6 +170,9 @@ module.exports = async (interaction, client) => {
 
   // ── Botão: cancelar confirmação ───────────────────────────────────────────
   if (id === 'cancelar_confirmacao') {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply({ ephemeral: true }).catch(() => {});
+    }
     qtdSessao.delete(interaction.user.id);
     return interaction.editReply({ content: '❌ Compra cancelada.', embeds: [], components: [] });
   }
