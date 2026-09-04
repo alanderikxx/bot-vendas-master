@@ -394,10 +394,8 @@ async function atualizarPainelProduto(guild, painelId) {
       !imagemOriginal.includes('media.discordapp.net/attachments')
       ? imagemOriginal : null;
     const imagemValida = imagemBanco || imagemCDN;
-    const THUMBNAIL_PADRAO = `${process.env.WEBHOOK_URL?.replace('/webhook', '') || 'http://localhost:3000'}/assets/thumbnail.jpg`;
-    // Thumbnail SEMPRE é a imagem padrão da loja (canto direito)
-    // Imagem grande SEMPRE é a imagem do carrinho (centro)
-    const thumbnailUrl = THUMBNAIL_PADRAO;
+    // Thumbnail fixa — imagem padrão da loja hospedada no Imgur (permanente)
+    const thumbnailUrl = 'https://i.imgur.com/YyHI49C.jpeg';
 
     // Montar embed como JSON puro — bypassa validação shapeshift (aceita qualquer Unicode)
     // Formatar descrição com blockquote (>) em cada linha
