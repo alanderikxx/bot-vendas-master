@@ -214,8 +214,12 @@ async function enviarPixSaida({ valor, chavePix, descricao = 'Saque de coins' })
   const idEnvio = `saque${Date.now()}`.slice(0, 35);
 
   const payload = {
-    valor: Number(valor).toFixed(2),
-    chave: chavePix.trim(),
+    valor: {
+      original: Number(valor).toFixed(2),
+    },
+    favorecido: {
+      chave: chavePix.trim(),
+    },
   };
 
   const res = await axios.put(
