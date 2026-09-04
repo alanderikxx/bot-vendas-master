@@ -163,7 +163,9 @@ function buildLojaMenu() {
   const row3 = new ActionRowBuilder().addComponents(
     btn('pa_criar_cupom',      '🎟️ Criar Cupom', ButtonStyle.Success),
     btn('pa_listar_cupons',    '🎟️ Ver Cupons',  ButtonStyle.Secondary),
-    btn('pa_home',             '🔙 Voltar',      ButtonStyle.Secondary),
+    btn('pa_pausar_produto',   '⏸️ Pausar',       ButtonStyle.Secondary),
+    btn('pa_ver_estoque',      '🔍 Ver Estoque',  ButtonStyle.Secondary),
+    btn('pa_home',             '🔙 Voltar',       ButtonStyle.Secondary),
   );
 
   return { embed, components: [row1, row2, row3] };
@@ -206,12 +208,17 @@ function buildOperacoesMenu() {
   const row2 = new ActionRowBuilder().addComponents(
     btn('pa_flashsale',            '⚡ Flash Sale',      ButtonStyle.Danger),
     btn('pa_anuncio',              '📣 Anúncio DM',      ButtonStyle.Primary),
+    btn('pa_dm_compradores',       '📨 DM Compradores',  ButtonStyle.Primary),
     btn('pa_fechar_todos_tickets', '🔒 Fechar Tickets',  ButtonStyle.Danger),
     btn('pa_cancelar_pendentes',   '❌ Cancelar Pedidos',ButtonStyle.Danger),
   );
 
   const row3 = new ActionRowBuilder().addComponents(
-    btn('pa_home', '🔙 Voltar', ButtonStyle.Secondary),
+    btn('pa_reentregas',    '📦 Reentregas',      ButtonStyle.Secondary),
+    btn('pa_reenviar_produto','🔄 Reenviar',       ButtonStyle.Secondary),
+    btn('pa_vendas_produto', '📊 Receita',         ButtonStyle.Secondary),
+    btn('pa_nota_fiscal',   '🧾 Nota Fiscal',      ButtonStyle.Secondary),
+    btn('pa_home',          '🔙 Voltar',           ButtonStyle.Secondary),
   );
 
   return { embed, components: [row1, row2, row3] };
@@ -244,13 +251,19 @@ function buildUsuariosMenu() {
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_blacklist_cpf',  '🚫 Blacklist CPF',  ButtonStyle.Danger),
-    btn('pa_ranking',        '🏆 Ranking',         ButtonStyle.Secondary),
-    btn('pa_top_produtos',   '🏆 Top Produtos',    ButtonStyle.Secondary),
-    btn('pa_home',           '🔙 Voltar',          ButtonStyle.Secondary),
+    btn('pa_blacklist_cpf',     '🚫 Blacklist CPF',   ButtonStyle.Danger),
+    btn('pa_ranking',           '🏆 Ranking',          ButtonStyle.Secondary),
+    btn('pa_top_produtos',      '🏆 Top Produtos',     ButtonStyle.Secondary),
+    btn('pa_historico_usuario', '📜 Histórico',        ButtonStyle.Secondary),
+    btn('pa_resetar_compras',   '🔄 Resetar Compras',  ButtonStyle.Danger),
   );
 
-  return { embed, components: [row1, row2] };
+  const row3 = new ActionRowBuilder().addComponents(
+    btn('pa_simulador',  '💡 Simulador',  ButtonStyle.Secondary),
+    btn('pa_home',       '🔙 Voltar',     ButtonStyle.Secondary),
+  );
+
+  return { embed, components: [row1, row2, row3] };
 }
 
 function buildCaixaMenu() {
@@ -289,33 +302,35 @@ function buildCaixaMenu() {
 
 // ─── Menu Config (Owner) ─────────────────────────────────────────────────────
 function buildConfigMenu() {
-  const nomeLoja   = Config.get('nome_loja')    || 'Máximo Store';
-  const metaDia    = Config.get('meta_dia')     || '0';
-  const cashback   = Config.get('cashback_pct') || '5';
-  const manutencao = Config.get('manutencao') === true ? '✅ Sim' : '❌ Não';
+  const nomeLoja    = Config.get('nome_loja')       || 'Máximo Store';
+  const metaDia     = Config.get('meta_dia')        || '0';
+  const cashback    = Config.get('cashback_pct')    || '5';
+  const canalVendas = Config.get('canal_vendas_id') ? `<#${Config.get('canal_vendas_id')}>` : '❌ Não definido';
 
   const embed = new EmbedBuilder()
     .setColor(0x5865F2)
     .setTitle('🔧 Painel — Configurações')
     .setDescription('> Ajuste as configurações gerais da loja.')
     .addFields(
-      { name: '🏪 Nome da loja',    value: `**${nomeLoja}**`,                  inline: true },
+      { name: '🏪 Nome da loja',    value: `**${nomeLoja}**`,                      inline: true },
       { name: '🎯 Meta diária',     value: `**R$ ${Number(metaDia).toFixed(2)}**`, inline: true },
-      { name: '🪙 Cashback %',      value: `**${cashback}%**`,                 inline: true },
-      { name: '🔧 Manutenção',      value: manutencao,                         inline: true },
+      { name: '🪙 Cashback %',      value: `**${cashback}%**`,                     inline: true },
+      { name: '📢 Canal de vendas', value: canalVendas,                            inline: true },
     )
     .setFooter({ text: 'Máximo Store • Configurações' })
     .setTimestamp();
 
   const row1 = new ActionRowBuilder().addComponents(
-    btn('pa_cfg_nome',       '🏪 Nome Loja',    ButtonStyle.Primary),
-    btn('pa_cfg_meta',       '🎯 Meta Diária',  ButtonStyle.Primary),
-    btn('pa_cfg_cashback',   '🪙 Cashback',     ButtonStyle.Secondary),
-    btn('pa_cfg_boas_vindas','👋 Boas-vindas',  ButtonStyle.Secondary),
+    btn('pa_cfg_nome',         '🏪 Nome Loja',     ButtonStyle.Primary),
+    btn('pa_cfg_meta',         '🎯 Meta Diária',   ButtonStyle.Primary),
+    btn('pa_cfg_cashback',     '🪙 Cashback',      ButtonStyle.Secondary),
+    btn('pa_cfg_boas_vindas',  '👋 Boas-vindas',   ButtonStyle.Secondary),
+    btn('pa_cfg_canal_vendas', '📢 Canal Vendas',  ButtonStyle.Secondary),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_home', '🔙 Voltar', ButtonStyle.Secondary),
+    btn('pa_zerar_historico', '🗑️ Zerar Histórico', ButtonStyle.Danger),
+    btn('pa_home',            '🔙 Voltar',           ButtonStyle.Secondary),
   );
 
   return { embed, components: [row1, row2] };
@@ -449,6 +464,212 @@ async function handlePainelAdmin(interaction, client) {
       mRow(new TextInputBuilder().setCustomId('msg').setLabel('Mensagem (use {usuario} para mencionar)').setStyle(TextInputStyle.Paragraph).setRequired(true)
         .setPlaceholder('Bem-vindo, {usuario}! 🎉')
         .setValue(Config.get('msg_boas_vindas') || 'Bem-vindo, {usuario}! 🎉').setMaxLength(500)),
+    );
+    return interaction.showModal(modal);
+  }
+
+  if (id === 'pa_cfg_canal_vendas') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_cfg_canal_vendas').setTitle('📢 Canal de Feed de Vendas');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('canal_id').setLabel('ID do canal (0 para desativar)').setStyle(TextInputStyle.Short).setRequired(true)
+        .setPlaceholder('Ex: 1234567890').setValue(Config.get('canal_vendas_id') || '')),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ── Zerar histórico ───────────────────────────────────────────────────────
+  if (id === 'pa_zerar_historico') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    // Confirmação com botões
+    const rowConf = new ActionRowBuilder().addComponents(
+      btn('pa_confirmar_zerar', '✅ Sim, zerar tudo', ButtonStyle.Danger),
+      btn('pa_cancelar_zerar',  '❌ Cancelar',        ButtonStyle.Secondary),
+    );
+    return interaction.reply({
+      embeds: [new EmbedBuilder()
+        .setColor(config.colors.error)
+        .setTitle('⚠️ Confirmar Zeragem de Histórico')
+        .setDescription([
+          '> Esta ação é **irreversível** e irá apagar:',
+          '> • Todos os pedidos (pagos, entregues, cancelados)',
+          '> • Todos os tickets',
+          '> • Todos os reembolsos',
+          '> • Histórico de coins e caixas',
+          '> • Contadores de vendas dos produtos',
+          '> ',
+          '> ✅ **Serão mantidos:** produtos, estoques, usuários, cupons, configurações.',
+        ].join('\n'))],
+      components: [rowConf],
+      ephemeral: true,
+    });
+  }
+
+  if (id === 'pa_confirmar_zerar') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    await interaction.deferUpdate();
+    try {
+      const tabelas = ['pedidos', 'tickets', 'reembolsos', 'coins_historico', 'caixa_historico', 'afiliados_ganhos'];
+      for (const t of tabelas) {
+        try { db.prepare(`DELETE FROM ${t}`).run(); } catch {}
+      }
+      // Resetar contadores
+      try { db.prepare('UPDATE produtos SET vendas=0').run(); } catch {}
+      try { db.prepare('UPDATE variantes_produto SET vendas=0').run(); } catch {}
+      try { db.prepare('UPDATE usuarios SET total_compras=0, total_gasto=0').run(); } catch {}
+      // Resetar estoque_variante usado (marcar como disponível de novo os itens já usados são perdidos — só zera flag)
+      // NÃO faz isso pois o conteúdo do item foi entregue
+      _statsCache = null;
+      await atualizarPainelAdmin(interaction.guild);
+      const { log } = require('../utils/logger');
+      await log('sistema', { executor: interaction.user.id, descricao: '🗑️ Histórico de vendas zerado pelo Owner' });
+      return interaction.editReply({ content: '✅ Histórico zerado com sucesso. Produtos e estoques mantidos.', embeds: [], components: [] });
+    } catch (err) {
+      return interaction.editReply({ content: `❌ Erro: \`${err.message}\``, embeds: [], components: [] });
+    }
+  }
+
+  if (id === 'pa_cancelar_zerar') {
+    return interaction.update({ content: '✅ Cancelado.', embeds: [], components: [] });
+  }
+
+  // ── Reenviar produto para usuário ─────────────────────────────────────────
+  if (id === 'pa_reenviar_produto') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_reenviar_produto').setTitle('🔄 Reenviar Produto');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('pedido_id').setLabel('ID do Pedido (primeiros 8 chars)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: A1B2C3D4')),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ── Reentregas pendentes ──────────────────────────────────────────────────
+  if (id === 'pa_reentregas') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const falhos = db.prepare(`
+      SELECT p.*, pr.nome as pnome FROM pedidos p
+      JOIN produtos pr ON p.produto_id=pr.id
+      WHERE p.status='pago' AND (p.entregue_em IS NULL OR p.entregue_em=0)
+      ORDER BY p.pago_em DESC LIMIT 10
+    `).all();
+    if (!falhos.length) return interaction.editReply({ content: '✅ Nenhuma entrega pendente.' });
+    const embed = new EmbedBuilder().setColor(config.colors.warning).setTitle('📦 Entregas Pendentes').setTimestamp();
+    for (const p of falhos) {
+      embed.addFields({ name: `📦 ${p.pnome}`, value: `<@${p.usuario_id}> • R$ ${Number(p.valor_total).toFixed(2)} • \`${p.id.slice(0,8)}\``, inline: false });
+    }
+    const rows = falhos.slice(0,3).map(p => new ActionRowBuilder().addComponents(
+      btn(`pa_forcar_entrega_${p.id}`, `📦 Entregar ${p.id.slice(0,6)}`, ButtonStyle.Success),
+    ));
+    return interaction.editReply({ embeds: [embed], components: rows });
+  }
+
+  if (id.startsWith('pa_forcar_entrega_')) {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const pedidoId = id.replace('pa_forcar_entrega_', '');
+    const pedido   = db.prepare('SELECT * FROM pedidos WHERE id=?').get(pedidoId);
+    if (!pedido) return interaction.editReply({ content: '❌ Pedido não encontrado.' });
+    try {
+      const { entregarProduto } = require('./loja');
+      await entregarProduto(pedido, client);
+      return interaction.editReply({ content: `✅ Produto reenviado para <@${pedido.usuario_id}>.` });
+    } catch (err) {
+      return interaction.editReply({ content: `❌ Erro: \`${err.message}\`` });
+    }
+  }
+
+  // ── Pausar/retomar produto ────────────────────────────────────────────────
+  if (id === 'pa_pausar_produto') {
+    if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_pausar_produto').setTitle('⏸️ Pausar/Retomar Produto');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('produto_id').setLabel('ID do Produto (primeiros 8 chars)').setStyle(TextInputStyle.Short).setRequired(true)),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ── Vendas por produto (receita) ──────────────────────────────────────────
+  if (id === 'pa_vendas_produto') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const dados = db.prepare(`
+      SELECT pr.nome, COUNT(*) as qtd, COALESCE(SUM(p.valor_total),0) as receita
+      FROM pedidos p JOIN produtos pr ON p.produto_id=pr.id
+      WHERE p.status IN ('pago','entregue')
+      GROUP BY p.produto_id ORDER BY receita DESC LIMIT 10
+    `).all();
+    if (!dados.length) return interaction.editReply({ content: '📊 Nenhuma venda registrada.' });
+    const maxRec = dados[0].receita;
+    const linhas = dados.map((d, i) => {
+      const bar = '█'.repeat(Math.round((d.receita / maxRec) * 8)) + '░'.repeat(8 - Math.round((d.receita / maxRec) * 8));
+      return `\`${String(i+1).padStart(2)}\` \`${bar}\` **${d.nome.slice(0,20)}** — ${d.qtd}× — R$ ${Number(d.receita).toFixed(2)}`;
+    });
+    const embed = new EmbedBuilder().setColor(config.colors.gold).setTitle('📊 Receita por Produto').setDescription(linhas.join('\n')).setTimestamp();
+    return interaction.editReply({ embeds: [embed] });
+  }
+
+  // ── Ver conteúdo do estoque de uma variante ────────────────────────────────
+  if (id === 'pa_ver_estoque') {
+    if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_ver_estoque').setTitle('🔍 Ver Estoque da Variante');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('variante_id').setLabel('ID da Variante (primeiros 8 chars)').setStyle(TextInputStyle.Short).setRequired(true)),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ── Histórico de compras de um usuário ────────────────────────────────────
+  if (id === 'pa_historico_usuario') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_historico_usuario').setTitle('📜 Histórico do Usuário');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('discord_id').setLabel('Discord ID do usuário').setStyle(TextInputStyle.Short).setRequired(true)),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ── Resetar contador de compras de um usuário ─────────────────────────────
+  if (id === 'pa_resetar_compras') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_resetar_compras').setTitle('🔄 Resetar Compras do Usuário');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('discord_id').setLabel('Discord ID do usuário').setStyle(TextInputStyle.Short).setRequired(true)),
+      mRow(new TextInputBuilder().setCustomId('confirmar').setLabel('Digite CONFIRMAR para prosseguir').setStyle(TextInputStyle.Short).setRequired(true)),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ── Simulador de receita ──────────────────────────────────────────────────
+  if (id === 'pa_simulador') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_simulador').setTitle('💡 Simulador de Receita');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('vendas_dia').setLabel('Vendas por dia (estimativa)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 10')),
+      mRow(new TextInputBuilder().setCustomId('ticket_medio').setLabel('Ticket médio R$ por venda').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 35.00')),
+      mRow(new TextInputBuilder().setCustomId('dias').setLabel('Período em dias').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 30')),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ── DM em massa para compradores ──────────────────────────────────────────
+  if (id === 'pa_dm_compradores') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_dm_compradores').setTitle('📨 DM para Compradores');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('titulo').setLabel('Título da mensagem').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('🎉 Novidade!')),
+      mRow(new TextInputBuilder().setCustomId('mensagem').setLabel('Mensagem').setStyle(TextInputStyle.Paragraph).setRequired(true).setPlaceholder('Olá! Temos uma novidade...')),
+      mRow(new TextInputBuilder().setCustomId('produto_id').setLabel('Filtrar por produto ID (vazio = todos)').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Primeiros 8 chars do produto')),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ── Nota fiscal manual ────────────────────────────────────────────────────
+  if (id === 'pa_nota_fiscal') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_nota_fiscal').setTitle('🧾 Emitir Nota Fiscal Manual');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('pedido_id').setLabel('ID do Pedido').setStyle(TextInputStyle.Short).setRequired(true)),
     );
     return interaction.showModal(modal);
   }
@@ -1730,6 +1951,231 @@ async function handlePainelAdminModals(interaction, client) {
     }
     return interaction.editReply({ content: `✅ **${qtd} ${COIN_EMOJI}** adicionados para **${count}** usuários!\n**Motivo:** ${motivo}` });
   }
+
+  // ─── Config canal de vendas ───────────────────────────────────────────────
+  if (id === 'pam_cfg_canal_vendas') {
+    await interaction.deferReply({ ephemeral: true });
+    const canalId = interaction.fields.getTextInputValue('canal_id').trim();
+    if (canalId === '0' || canalId === '') {
+      db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('canal_vendas_id','','string')").run();
+      return interaction.editReply({ content: '✅ Feed de vendas desativado.' });
+    }
+    const canal = interaction.guild.channels.cache.get(canalId);
+    if (!canal) return interaction.editReply({ content: `❌ Canal \`${canalId}\` não encontrado.` });
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('canal_vendas_id',?,'string')").run(canalId);
+    return interaction.editReply({ content: `✅ Feed de vendas configurado para <#${canalId}>.` });
+  }
+
+  // ─── Reenviar produto ─────────────────────────────────────────────────────
+  if (id === 'pam_reenviar_produto') {
+    await interaction.deferReply({ ephemeral: true });
+    const busca  = interaction.fields.getTextInputValue('pedido_id').trim();
+    const pedido = db.prepare("SELECT * FROM pedidos WHERE UPPER(SUBSTR(id,1,8))=UPPER(?) OR id LIKE ?").get(busca, `${busca}%`);
+    if (!pedido) return interaction.editReply({ content: `❌ Pedido \`${busca}\` não encontrado.` });
+    if (!['pago','entregue'].includes(pedido.status)) return interaction.editReply({ content: `⚠️ Pedido com status **${pedido.status}** — só é possível reenviar pedidos pagos.` });
+    try {
+      const { entregarProduto } = require('./loja');
+      await entregarProduto(pedido, client);
+      return interaction.editReply({ content: `✅ Produto reenviado para <@${pedido.usuario_id}>!` });
+    } catch (err) {
+      return interaction.editReply({ content: `❌ Erro ao reenviar: \`${err.message}\`` });
+    }
+  }
+
+  // ─── Pausar/retomar produto ───────────────────────────────────────────────
+  if (id === 'pam_pausar_produto') {
+    await interaction.deferReply({ ephemeral: true });
+    const busca   = interaction.fields.getTextInputValue('produto_id').trim();
+    const produto = db.prepare("SELECT * FROM produtos WHERE UPPER(SUBSTR(id,1,8))=UPPER(?) OR id LIKE ?").get(busca, `${busca}%`);
+    if (!produto) return interaction.editReply({ content: `❌ Produto \`${busca}\` não encontrado.` });
+    const novoStatus = produto.ativo ? 0 : 1;
+    db.prepare('UPDATE produtos SET ativo=? WHERE id=?').run(novoStatus, produto.id);
+    const { atualizarPainelProduto } = require('./painelProduto');
+    const paineis = db.prepare('SELECT * FROM paineis_canal WHERE produto_id=? AND ativo=1').all(produto.id);
+    for (const p of paineis) await atualizarPainelProduto(interaction.guild, p.id).catch(() => {});
+    return interaction.editReply({ content: `${novoStatus ? '✅ Produto **ativado**' : '⏸️ Produto **pausado**'}: **${produto.nome}**` });
+  }
+
+  // ─── Ver estoque da variante ──────────────────────────────────────────────
+  if (id === 'pam_ver_estoque') {
+    await interaction.deferReply({ ephemeral: true });
+    const busca    = interaction.fields.getTextInputValue('variante_id').trim();
+    const variante = db.prepare("SELECT * FROM variantes_produto WHERE UPPER(SUBSTR(id,1,8))=UPPER(?) OR id LIKE ?").get(busca, `${busca}%`);
+    if (!variante) return interaction.editReply({ content: `❌ Variante \`${busca}\` não encontrada.` });
+    const itens = db.prepare('SELECT * FROM estoque_variante WHERE variante_id=? AND usado=0 LIMIT 30').all(variante.id);
+    const total = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(variante.id).c;
+    const embed = new EmbedBuilder()
+      .setColor(config.colors.primary)
+      .setTitle(`🔍 Estoque — ${variante.nome}`)
+      .setDescription(itens.length
+        ? itens.map((it, i) => `\`${String(i+1).padStart(2,'0')}\` ${it.conteudo.slice(0,80)}`).join('\n')
+        : '_Sem itens disponíveis_')
+      .addFields({ name: '📦 Total disponível', value: `**${total}** unidade(s)`, inline: true })
+      .setFooter({ text: total > 30 ? `Mostrando 30 de ${total}` : `${total} item(s) total` })
+      .setTimestamp();
+    return interaction.editReply({ embeds: [embed] });
+  }
+
+  // ─── Histórico de compras do usuário ─────────────────────────────────────
+  if (id === 'pam_historico_usuario') {
+    await interaction.deferReply({ ephemeral: true });
+    const discordId = interaction.fields.getTextInputValue('discord_id').trim();
+    const usuario   = db.prepare('SELECT * FROM usuarios WHERE discord_id=?').get(discordId);
+    if (!usuario) return interaction.editReply({ content: '❌ Usuário não encontrado no banco.' });
+    const pedidos = db.prepare(`
+      SELECT p.*, pr.nome as pnome FROM pedidos p
+      JOIN produtos pr ON p.produto_id=pr.id
+      WHERE p.usuario_id=? ORDER BY p.criado_em DESC LIMIT 15
+    `).all(discordId);
+    const embed = new EmbedBuilder()
+      .setColor(config.colors.info)
+      .setTitle(`📜 Histórico — ${usuario.nome || discordId}`)
+      .addFields(
+        { name: '🪙 Coins',        value: `**${(usuario.coins||0).toLocaleString('pt-BR')}**`,         inline: true },
+        { name: '🛒 Compras',      value: `**${usuario.total_compras || 0}**`,                          inline: true },
+        { name: '💵 Total gasto',  value: `**R$ ${Number(usuario.total_gasto||0).toFixed(2)}**`,        inline: true },
+      )
+      .setTimestamp();
+    if (pedidos.length) {
+      const statusEmoji = { pago:'✅', entregue:'📦', pendente:'⏳', cancelado:'❌' };
+      const linhas = pedidos.map(p => {
+        const data = p.pago_em ? new Date(p.pago_em*1000).toLocaleDateString('pt-BR') : '—';
+        return `${statusEmoji[p.status]||'•'} **${p.pnome.slice(0,25)}** — R$ ${Number(p.valor_total).toFixed(2)} — ${data}`;
+      });
+      embed.setDescription(linhas.join('\n'));
+    } else {
+      embed.setDescription('_Nenhum pedido encontrado._');
+    }
+    const rowAcoes = new ActionRowBuilder().addComponents(
+      btn(`pa_bloquear_${discordId}`, usuario.bloqueado ? '✅ Desbloquear' : '🚫 Bloquear', usuario.bloqueado ? ButtonStyle.Success : ButtonStyle.Danger),
+    );
+    return interaction.editReply({ embeds: [embed], components: [rowAcoes] });
+  }
+
+  // ─── Resetar compras do usuário ───────────────────────────────────────────
+  if (id === 'pam_resetar_compras') {
+    await interaction.deferReply({ ephemeral: true });
+    const discordId = interaction.fields.getTextInputValue('discord_id').trim();
+    const confirmar = interaction.fields.getTextInputValue('confirmar').trim().toUpperCase();
+    if (confirmar !== 'CONFIRMAR') return interaction.editReply({ content: '❌ Digite exatamente **CONFIRMAR** para prosseguir.' });
+    const u = db.prepare('SELECT * FROM usuarios WHERE discord_id=?').get(discordId);
+    if (!u) return interaction.editReply({ content: '❌ Usuário não encontrado.' });
+    db.prepare('UPDATE usuarios SET total_compras=0, total_gasto=0 WHERE discord_id=?').run(discordId);
+    return interaction.editReply({ content: `✅ Contadores de <@${discordId}> resetados.\n> **total_compras** e **total_gasto** zerados.` });
+  }
+
+  // ─── Simulador de receita ─────────────────────────────────────────────────
+  if (id === 'pam_simulador') {
+    await interaction.deferReply({ ephemeral: true });
+    const vendasDia  = parseFloat(interaction.fields.getTextInputValue('vendas_dia').trim());
+    const ticketMed  = parseFloat(interaction.fields.getTextInputValue('ticket_medio').trim().replace(',','.'));
+    const dias       = parseInt(interaction.fields.getTextInputValue('dias').trim());
+    if (isNaN(vendasDia)||isNaN(ticketMed)||isNaN(dias)) return interaction.editReply({ content: '❌ Valores inválidos.' });
+
+    const receitaBruta  = vendasDia * ticketMed * dias;
+    const taxaStripe    = receitaBruta * 0.029 + (vendasDia * dias * 0.30); // 2.9% + $0.30/transação
+    const receitaLiquid = receitaBruta - taxaStripe;
+    const projecao7     = vendasDia * ticketMed * 7;
+    const projecao30    = vendasDia * ticketMed * 30;
+
+    const embed = new EmbedBuilder()
+      .setColor(0x00D4AA)
+      .setTitle('💡 Simulador de Receita')
+      .addFields(
+        { name: '📅 Período simulado',  value: `**${dias}** dias`,                                        inline: true },
+        { name: '🛒 Vendas/dia',        value: `**${vendasDia}**`,                                         inline: true },
+        { name: '💵 Ticket médio',      value: `**R$ ${ticketMed.toFixed(2)}**`,                           inline: true },
+        { name: '💰 Receita bruta',     value: `**R$ ${receitaBruta.toFixed(2)}**`,                        inline: true },
+        { name: '💳 Taxa Stripe (est.)',value: `**R$ ${taxaStripe.toFixed(2)}**`,                          inline: true },
+        { name: '✅ Receita líquida',   value: `**R$ ${receitaLiquid.toFixed(2)}**`,                       inline: true },
+        { name: '📈 Projeção 7 dias',   value: `R$ ${projecao7.toFixed(2)}`,                               inline: true },
+        { name: '📈 Projeção 30 dias',  value: `R$ ${projecao30.toFixed(2)}`,                              inline: true },
+        { name: '📈 Projeção anual',    value: `R$ ${(vendasDia * ticketMed * 365).toFixed(2)}`,           inline: true },
+      )
+      .setFooter({ text: 'Estimativa. Taxas Stripe variam. PIX não tem taxa.' })
+      .setTimestamp();
+    return interaction.editReply({ embeds: [embed] });
+  }
+
+  // ─── DM para compradores ──────────────────────────────────────────────────
+  if (id === 'pam_dm_compradores') {
+    await interaction.deferReply({ ephemeral: true });
+    if (!isAdmin(interaction.member)) return interaction.editReply({ content: '❌ Apenas admins.' });
+    const titulo    = interaction.fields.getTextInputValue('titulo').trim();
+    const mensagem  = interaction.fields.getTextInputValue('mensagem').trim();
+    const prodFiltro = interaction.fields.getTextInputValue('produto_id').trim();
+
+    let query = "SELECT DISTINCT usuario_id FROM pedidos WHERE status IN ('pago','entregue')";
+    const params = [];
+    if (prodFiltro) {
+      const prod = db.prepare("SELECT id FROM produtos WHERE UPPER(SUBSTR(id,1,8))=UPPER(?) OR id LIKE ?").get(prodFiltro, `${prodFiltro}%`);
+      if (!prod) return interaction.editReply({ content: `❌ Produto \`${prodFiltro}\` não encontrado.` });
+      query += ' AND produto_id=?';
+      params.push(prod.id);
+    }
+    const destinatarios = db.prepare(query).all(...params);
+    if (!destinatarios.length) return interaction.editReply({ content: '❌ Nenhum comprador encontrado.' });
+
+    const embedMsg = new EmbedBuilder()
+      .setColor(config.colors.primary)
+      .setTitle(titulo)
+      .setDescription(mensagem)
+      .setFooter({ text: 'Máximo Store' })
+      .setTimestamp();
+
+    let enviados = 0, falhos = 0;
+    for (const row of destinatarios) {
+      try {
+        const membro = await interaction.guild.members.fetch(row.usuario_id).catch(() => null);
+        if (membro) { await membro.send({ embeds: [embedMsg] }); enviados++; }
+        else falhos++;
+      } catch { falhos++; }
+      await new Promise(r => setTimeout(r, 400)); // rate limit
+    }
+    return interaction.editReply({ content: `✅ DM enviada para **${enviados}** comprador(es).\n❌ Falhou: **${falhos}** (DMs fechadas ou saíram do servidor).` });
+  }
+
+  // ─── Nota fiscal manual ───────────────────────────────────────────────────
+  if (id === 'pam_nota_fiscal') {
+    await interaction.deferReply({ ephemeral: true });
+    const busca  = interaction.fields.getTextInputValue('pedido_id').trim();
+    const pedido = db.prepare("SELECT p.*, pr.nome as pnome, u.nome as unome FROM pedidos p JOIN produtos pr ON p.produto_id=pr.id LEFT JOIN usuarios u ON p.usuario_id=u.discord_id WHERE UPPER(SUBSTR(p.id,1,8))=UPPER(?) OR p.id LIKE ?").get(busca, `${busca}%`);
+    if (!pedido) return interaction.editReply({ content: `❌ Pedido \`${busca}\` não encontrado.` });
+
+    const dataCompra = pedido.pago_em ? new Date(pedido.pago_em*1000).toLocaleString('pt-BR') : 'N/A';
+    const nf = [
+      '```',
+      '════════════════════════════════════════',
+      '          MÁXIMO STORE — NOTA FISCAL    ',
+      '════════════════════════════════════════',
+      `Pedido:    ${pedido.id.slice(0,8).toUpperCase()}`,
+      `Data:      ${dataCompra}`,
+      `Cliente:   ${pedido.unome || pedido.usuario_id}`,
+      `Produto:   ${pedido.pnome}`,
+      `Valor:     R$ ${Number(pedido.valor_total).toFixed(2)}`,
+      `Status:    ${pedido.status.toUpperCase()}`,
+      pedido.cupom_usado ? `Cupom:     ${pedido.cupom_usado}` : '',
+      pedido.metodo_pag  ? `Pagamento: ${pedido.metodo_pag.toUpperCase()}` : '',
+      '════════════════════════════════════════',
+      '```',
+    ].filter(Boolean).join('\n');
+
+    // Enviar para o usuário no DM
+    try {
+      const membro = await interaction.guild.members.fetch(pedido.usuario_id).catch(() => null);
+      if (membro) {
+        await membro.send({
+          embeds: [new EmbedBuilder().setColor(config.colors.success).setTitle('🧾 Nota Fiscal — Máximo Store').setDescription(nf).setTimestamp()],
+        });
+      }
+    } catch {}
+
+    return interaction.editReply({
+      content: `✅ Nota fiscal gerada e enviada para <@${pedido.usuario_id}>!`,
+      embeds: [new EmbedBuilder().setColor(config.colors.success).setTitle('🧾 Nota Fiscal').setDescription(nf).setTimestamp()],
+    });
+  }
+
   } catch (err) {
     console.error('[PainelAdminModals] Erro:', err.message, '| modal:', interaction.customId);
     const responder = interaction.deferred ? 'editReply' : 'reply';

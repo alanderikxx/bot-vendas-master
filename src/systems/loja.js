@@ -624,6 +624,28 @@ async function entregarProduto(pedido, client) {
         }).catch(() => {});
       }
     }
+
+    // ── Feed público de vendas ──────────────────────────────────────────────
+    try {
+      const { Config: Cfg } = require('../database/database');
+      const canalVendasId = Cfg.get('canal_vendas_id');
+      if (canalVendasId) {
+        const canalVendas = guild.channels.cache.get(canalVendasId);
+        if (canalVendas && pedido.valor_total > 0) {
+          const nomeExibido = member?.displayName
+            ? member.displayName.replace(/./g, (c, i) => i === 0 ? c : i === member.displayName.length - 1 ? c : '✦')
+            : 'Alguém';
+          const feedEmbed = new EmbedBuilder()
+            .setColor(config.colors.success)
+            .setDescription([
+              `🛒 **${nomeExibido}** acabou de comprar **${produto.nome}**!`,
+              `💵 R$ ${pedido.valor_total.toFixed(2)}`,
+            ].join('\n'))
+            .setTimestamp();
+          await canalVendas.send({ embeds: [feedEmbed] }).catch(() => {});
+        }
+      }
+    } catch {}
   } catch (err) {
     console.error('[EntregarProduto]', err.message);
   }
