@@ -55,50 +55,39 @@ async function brlParaMoeda(valorBrl, moeda = 'USD') {
 }
 
 // ─── Métodos de pagamento por moeda ──────────────────────────────────────────
-// Cada moeda tem métodos nativos além do cartão
+// Baseado nos métodos habilitados na conta Stripe BR
 const METODOS_POR_MOEDA = {
-  BRL: ['boleto', 'pix'],
-  EUR: ['card', 'multibanco', 'mb_way', 'ideal', 'sepa_debit', 'bancontact', 'eps', 'giropay', 'klarna', 'sofort'],
-  GBP: ['card', 'bacs_debit', 'klarna'],
-  USD: ['card', 'us_bank_account', 'afterpay_clearpay', 'affirm', 'klarna'],
-  CAD: ['card', 'afterpay_clearpay'],
-  AUD: ['card', 'afterpay_clearpay'],
-  JPY: ['card', 'konbini'],
-  MXN: ['card', 'oxxo'],
-  PLN: ['card', 'blik', 'p24'],
-  NOK: ['card', 'klarna'],
-  SEK: ['card', 'klarna'],
-  DKK: ['card', 'klarna'],
-  SGD: ['card', 'paynow'],
-  HKD: ['card', 'alipay', 'wechat_pay'],
-  CNY: ['card', 'alipay', 'wechat_pay'],
+  // BRL — tratado separadamente via EFI PIX
+  USD: ['card', 'boleto'],
+  EUR: ['card', 'boleto'],
+  GBP: ['card'],
+  CAD: ['card'],
+  AUD: ['card'],
+  JPY: ['card'],
+  CHF: ['card'],
+  MXN: ['card', 'boleto'],
+  ARS: ['card'],
+  CLP: ['card'],
+  COP: ['card'],
+  PEN: ['card'],
+  NOK: ['card'],
+  SEK: ['card'],
+  DKK: ['card'],
+  NZD: ['card'],
+  SGD: ['card'],
+  HKD: ['card'],
+  PLN: ['card'],
+  INR: ['card'],
+  TRY: ['card'],
+  ZAR: ['card'],
+  IDR: ['card'],
+  PHP: ['card'],
 };
 
-// Grupos de métodos para o select menu (o que mostrar pro usuário)
+// Grupos de métodos para o select menu
 const GRUPOS_METODO = {
-  card:             { label: '💳 Cartão de Crédito/Débito', emoji: '💳' },
-  boleto:           { label: '🧾 Boleto Bancário',          emoji: '🧾' },
-  pix:              { label: '💠 PIX (Stripe)',              emoji: '💠' },
-  multibanco:       { label: '🇵🇹 Multibanco (Portugal)',    emoji: '🇵🇹' },
-  mb_way:           { label: '🇵🇹 MB WAY (Portugal)',        emoji: '🇵🇹' },
-  ideal:            { label: '🏦 iDEAL (Holanda)',           emoji: '🏦' },
-  sepa_debit:       { label: '🇪🇺 SEPA Débito',              emoji: '🇪🇺' },
-  bancontact:       { label: '🇧🇪 Bancontact (Bélgica)',      emoji: '🇧🇪' },
-  blik:             { label: '🇵🇱 BLIK (Polônia)',            emoji: '🇵🇱' },
-  p24:              { label: '🇵🇱 Przelewy24 (Polônia)',      emoji: '🇵🇱' },
-  eps:              { label: '🇦🇹 EPS (Áustria)',             emoji: '🇦🇹' },
-  giropay:          { label: '🇩🇪 Giropay (Alemanha)',        emoji: '🇩🇪' },
-  klarna:           { label: '🛍️ Klarna (Pague Depois)',     emoji: '🛍️' },
-  afterpay_clearpay:{ label: '🛍️ Afterpay/Clearpay',        emoji: '🛍️' },
-  affirm:           { label: '🛍️ Affirm (EUA)',              emoji: '🛍️' },
-  oxxo:             { label: '🏪 OXXO (México)',              emoji: '🏪' },
-  konbini:          { label: '🏪 Konbini (Japão)',            emoji: '🏪' },
-  us_bank_account:  { label: '🏦 ACH (Débito EUA)',           emoji: '🏦' },
-  bacs_debit:       { label: '🏦 Bacs Débito (UK)',           emoji: '🏦' },
-  alipay:           { label: '📱 Alipay',                    emoji: '📱' },
-  wechat_pay:       { label: '📱 WeChat Pay',                 emoji: '📱' },
-  paynow:           { label: '📱 PayNow (Singapura)',         emoji: '📱' },
-  sofort:           { label: '🏦 Sofort (Europa)',            emoji: '🏦' },
+  card:   { label: '💳 Cartão (+ Apple Pay / Google Pay / Link)', emoji: '💳' },
+  boleto: { label: '🧾 Boleto Bancário',                          emoji: '🧾' },
 };
 
 // ─── Criar Checkout Session ───────────────────────────────────────────────────
@@ -123,18 +112,12 @@ async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD', met
   });
 
   if (metodo && metodo !== 'auto') {
-    // Método específico escolhido pelo usuário
     params.append('payment_method_types[]', metodo);
-    // Card sempre como fallback junto (exceto métodos que não combinam)
-    const semCard = ['boleto', 'oxxo', 'konbini', 'multibanco', 'mb_way', 'blik', 'p24', 'ideal', 'bancontact', 'eps', 'giropay', 'sofort'];
-    if (!semCard.includes(metodo)) {
-      params.append('payment_method_types[]', 'card');
-    }
     if (metodo === 'boleto') {
       params.set('payment_method_options[boleto][expires_after_days]', '3');
     }
   } else {
-    // Automático — Stripe mostra todos os métodos disponíveis para a moeda/país
+    // Automático — Stripe exibe cartão + Apple Pay + Google Pay + Link + Boleto
     params.append('automatic_payment_methods[enabled]', 'true');
     params.append('automatic_payment_methods[allow_redirects]', 'always');
   }
@@ -148,23 +131,9 @@ async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD', met
     );
     resData = res.data;
   } catch (err) {
-    // Log detalhado do erro Stripe para diagnóstico
     const stripeErr = err.response?.data?.error;
-    console.error('[Stripe] Erro detalhado:', JSON.stringify(stripeErr || err.message));
-    // Fallback: se método específico falhou, tenta com card
-    if (metodo && metodo !== 'auto' && metodo !== 'card') {
-      console.log('[Stripe] Tentando fallback para card...');
-      params.delete('payment_method_types[]');
-      params.append('payment_method_types[]', 'card');
-      const res2 = await axios.post(
-        'https://api.stripe.com/v1/checkout/sessions',
-        params.toString(),
-        { headers: { Authorization: `Bearer ${STRIPE_SECRET}`, 'Content-Type': 'application/x-www-form-urlencoded' } }
-      );
-      resData = res2.data;
-    } else {
-      throw err;
-    }
+    console.error('[Stripe] Erro:', JSON.stringify(stripeErr || err.message));
+    throw new Error(stripeErr?.message || err.message);
   }
 
   return {
