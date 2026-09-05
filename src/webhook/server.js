@@ -13,7 +13,50 @@ app.use(express.json());
 // ─── Servir assets estáticos (thumbnail, etc.) ────────────────────────────────
 app.use('/assets', express.static(path.join(__dirname, '../../assets')));
 
-// ─── Servir transcripts armazenados no banco ──────────────────────────────────
+// ─── Webhook Stripe ───────────────────────────────────────────────────────────
+app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    res.status(200).json({ ok: true });
+    const stripe  = require('../systems/stripe');
+    const event   = stripe.verificarWebhook(req.body.toString(), req.headers['stripe-signature']);
+
+    if (event.type === 'payment_intent.succeeded' || event.type === 'checkout.session.completed') {
+      const pedidoId = event.data?.object?.metadata?.pedido_id;
+      if (!pedidoId) return;
+
+      const { Pedidos, db } = require('../database/database');
+      const pedido = Pedidos.get(pedidoId);
+      if (!pedido || pedido.status !== 'pendente') return;
+
+      console.log(`[Stripe Webhook] Pagamento confirmado: ${pedidoId} | Tipo: ${event.type}`);
+      db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE id=?").run(pedidoId);
+
+      const { processarEntrega } = require('../systems/loja');
+      await processarEntrega(Pedidos.get(pedidoId), _client);
+    }
+  } catch (err) {
+    console.error('[Stripe Webhook]', err.message);
+  }
+});
+
+// ─── Rota de sucesso Stripe (redirect após pagamento) ─────────────────────────
+app.get('/stripe/sucesso', (req, res) => {
+  res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pagamento Confirmado</title></head>
+<body style="font-family:sans-serif;text-align:center;padding:40px;background:#23272a;color:#fff">
+<h1>✅ Pagamento Confirmado!</h1>
+<p>Seu pagamento foi recebido com sucesso.</p>
+<p>Volte ao Discord — seu produto será entregue no privado em instantes.</p>
+<p style="color:#aaa;margin-top:20px">Máximo Store</p>
+</body></html>`);
+});
+
+app.get('/stripe/cancelar', (req, res) => {
+  res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cancelado</title></head>
+<body style="font-family:sans-serif;text-align:center;padding:40px;background:#23272a;color:#fff">
+<h1>❌ Pagamento Cancelado</h1>
+<p>Você cancelou o pagamento. Seu pedido ainda está pendente no Discord.</p>
+</body></html>`);
+});
 app.get('/transcript/:id', (req, res) => {
   try {
     const { db: database } = require('../database/database');

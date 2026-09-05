@@ -55,12 +55,11 @@ async function brlParaMoeda(valorBrl, moeda = 'USD') {
 }
 
 // ─── Métodos de pagamento por moeda ──────────────────────────────────────────
-// Boleto só funciona em BRL no Stripe
 const METODOS_POR_MOEDA = {
   BRL: ['card', 'boleto'],
-  USD: ['card'],
-  EUR: ['card'],
-  GBP: ['card'],
+  USD: ['card', 'bank_transfer'],
+  EUR: ['card', 'bank_transfer'],
+  GBP: ['card', 'bank_transfer'],
   CAD: ['card'],
   AUD: ['card'],
   JPY: ['card'],
@@ -86,8 +85,9 @@ const METODOS_POR_MOEDA = {
 
 // Grupos de métodos para o select menu
 const GRUPOS_METODO = {
-  card:   { label: '💳 Cartão (+ Apple Pay / Google Pay / Link)', emoji: '💳' },
-  boleto: { label: '🧾 Boleto Bancário',                          emoji: '🧾' },
+  card:          { label: '💳 Cartão (+ Apple Pay / Google Pay / Link)', emoji: '💳' },
+  boleto:        { label: '🧾 Boleto Bancário',                          emoji: '🧾' },
+  bank_transfer: { label: '🏦 Transferência Bancária (ACH/SEPA/Wire)',   emoji: '🏦' },
 };
 
 // ─── Criar Checkout Session ───────────────────────────────────────────────────
@@ -142,14 +142,21 @@ async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD', met
   };
 }
 
-// ─── Consultar sessão ─────────────────────────────────────────────────────────
+// ─── Consultar sessão ou payment intent ──────────────────────────────────────
 async function consultarSessao(sessionId) {
-  const res = await axios.get(
-    `https://api.stripe.com/v1/checkout/sessions/${sessionId}`,
-    { headers: { Authorization: `Bearer ${STRIPE_SECRET}` } }
-  );
+  // Bank transfer usa PaymentIntent (prefixo pi_), Checkout usa cs_
+  const endpoint = sessionId.startsWith('pi_')
+    ? `https://api.stripe.com/v1/payment_intents/${sessionId}`
+    : `https://api.stripe.com/v1/checkout/sessions/${sessionId}`;
+
+  const res = await axios.get(endpoint, { headers: { Authorization: `Bearer ${STRIPE_SECRET}` } });
+
+  const pago = sessionId.startsWith('pi_')
+    ? res.data.status === 'succeeded'
+    : res.data.payment_status === 'paid';
+
   return {
-    pago:     res.data.payment_status === 'paid',
+    pago,
     pedidoId: res.data.metadata?.pedido_id,
     moeda:    res.data.metadata?.moeda,
   };
@@ -169,4 +176,70 @@ function verificarWebhook(payload, signature) {
   return JSON.parse(payload);
 }
 
-module.exports = { brlParaMoeda, criarCheckout, consultarSessao, verificarWebhook, MOEDAS, METODOS_POR_MOEDA, GRUPOS_METODO };
+// ─── Criar transferência bancária via Customer Balance ────────────────────────
+async function criarTransferenciaBancaria({ valorBrl, descricao, pedidoId, moeda = 'USD', nomeCliente, emailCliente }) {
+  if (!STRIPE_SECRET) throw new Error('STRIPE_SECRET_KEY não configurado');
+
+  const valorMoeda = await brlParaMoeda(valorBrl, moeda);
+  // JPY não usa centavos
+  const valorUnidade = moeda === 'JPY' ? Math.round(valorMoeda) : Math.round(valorMoeda * 100);
+
+  const headers = { Authorization: `Bearer ${STRIPE_SECRET}`, 'Content-Type': 'application/x-www-form-urlencoded' };
+
+  // 1. Criar ou buscar Customer
+  const custParams = new URLSearchParams({
+    'description': descricao || 'Máximo Store',
+    'metadata[pedido_id]': pedidoId,
+  });
+  if (nomeCliente) custParams.set('name', nomeCliente);
+  if (emailCliente) custParams.set('email', emailCliente);
+
+  const custRes = await axios.post('https://api.stripe.com/v1/customers', custParams.toString(), { headers });
+  const customerId = custRes.data.id;
+
+  // 2. Definir tipo de transferência por moeda
+  const tipoTransf = moeda === 'USD' ? 'us_bank_transfer'
+                   : moeda === 'EUR' ? 'eu_bank_transfer'
+                   : moeda === 'GBP' ? 'gb_bank_transfer'
+                   : 'us_bank_transfer';
+
+  // 3. Criar PaymentIntent com customer_balance
+  const piParams = new URLSearchParams({
+    'amount':                                          String(valorUnidade),
+    'currency':                                        moeda.toLowerCase(),
+    'customer':                                        customerId,
+    'payment_method_types[]':                          'customer_balance',
+    'payment_method_data[type]':                       'customer_balance',
+    'confirm':                                         'true',
+    'payment_method_options[customer_balance][funding_type]': 'bank_transfer',
+    [`payment_method_options[customer_balance][bank_transfer][type]`]: tipoTransf,
+    'description':                                     descricao || 'Máximo Store',
+    'metadata[pedido_id]':                             pedidoId,
+    'metadata[moeda]':                                 moeda,
+  });
+
+  // Para EUR precisa especificar o país
+  if (moeda === 'EUR') {
+    piParams.set('payment_method_options[customer_balance][bank_transfer][eu_bank_transfer][country]', 'DE');
+  }
+
+  const piRes = await axios.post('https://api.stripe.com/v1/payment_intents', piParams.toString(), { headers });
+  const pi = piRes.data;
+
+  // 4. Extrair dados bancários
+  const nextAction = pi.next_action;
+  const dadosBancarios = nextAction?.display_bank_transfer_instructions;
+
+  return {
+    paymentIntentId: pi.id,
+    customerId,
+    valorMoeda,
+    moeda,
+    valorBrl,
+    dadosBancarios,  // contém os dados de conta para transferência
+    expira: dadosBancarios?.amount_remaining,
+    referencia: dadosBancarios?.reference,
+  };
+}
+
+module.exports = { brlParaMoeda, criarCheckout, criarTransferenciaBancaria, consultarSessao, verificarWebhook, MOEDAS, METODOS_POR_MOEDA, GRUPOS_METODO };

@@ -283,12 +283,16 @@ module.exports = async (interaction, client) => {
     const pedido = Pedidos.get(pedidoId);
     if (!pedido || pedido.status !== 'pendente') return interaction.editReply({ content: `⚠️ Pedido já: **${pedido?.status || 'não encontrado'}**` });
 
-    const sessionId = pedido.tx_id?.replace('ST_', '');
-    if (!sessionId) return interaction.editReply({ content: '❌ Sem sessão Stripe.' });
+    const txId = pedido.tx_id;
+    if (!txId) return interaction.editReply({ content: '❌ Sem sessão de pagamento registrada.' });
+
+    // Suporta ST_ (Checkout Session), BT_ (Bank Transfer PaymentIntent)
+    const consultarId = txId.startsWith('BT_') ? txId.replace('BT_', '')
+                      : txId.replace('ST_', '');
 
     try {
       const stripe = require('../systems/stripe');
-      const status = await stripe.consultarSessao(sessionId);
+      const status = await stripe.consultarSessao(consultarId);
       if (status.pago) {
         db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE id=?").run(pedidoId);
         const { processarEntrega } = require('../systems/loja');
@@ -296,7 +300,10 @@ module.exports = async (interaction, client) => {
         if (interaction.message) await interaction.message.delete().catch(() => {});
         return interaction.editReply({ content: '✅ Pagamento confirmado! Produto entregue no privado.' });
       }
-      return interaction.editReply({ content: '⏳ Pagamento não confirmado ainda. Complete o pagamento e tente novamente.' });
+      const msgEspera = txId.startsWith('BT_')
+        ? '⏳ Transferência ainda não recebida. Pode levar alguns minutos após o envio.'
+        : '⏳ Pagamento não confirmado ainda. Complete o pagamento e tente novamente.';
+      return interaction.editReply({ content: msgEspera });
     } catch (err) {
       console.error('[Stripe Verificar]', err.message);
       return interaction.editReply({ content: `❌ Erro: \`${err.message.slice(0,100)}\`` });

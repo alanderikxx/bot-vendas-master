@@ -4,6 +4,35 @@ const { adicionarAoCarrinho } = require('../systems/carrinho');
 const { Pedidos, Produtos, db } = require('../database/database');
 const { isStaff } = require('../utils/permissions');
 
+// ─── Formatar dados bancários de transferência ────────────────────────────────
+function dadosBancarios(dados, moeda) {
+  if (!dados) return '> ⚠️ Dados bancários indisponíveis. Tente novamente.';
+  const linhas = [];
+  if (dados.financial_addresses?.length) {
+    for (const addr of dados.financial_addresses) {
+      if (addr.type === 'iban') {
+        linhas.push(`🏦 **IBAN:** \`${addr.iban?.iban}\``);
+        linhas.push(`🏛️ **BIC/SWIFT:** \`${addr.iban?.bic}\``);
+        linhas.push(`🏢 **Banco:** ${addr.iban?.bank_name || 'Stripe'}`);
+      } else if (addr.type === 'sort_code') {
+        linhas.push(`🏦 **Sort Code:** \`${addr.sort_code?.sort_code}\``);
+        linhas.push(`💳 **Nº Conta:** \`${addr.sort_code?.account_number}\``);
+      } else if (addr.type === 'zengin') {
+        linhas.push(`🏦 **Banco:** ${addr.zengin?.bank_name}`);
+        linhas.push(`🔢 **Agência:** \`${addr.zengin?.branch_code}\``);
+        linhas.push(`💳 **Conta:** \`${addr.zengin?.account_number}\``);
+      } else if (addr.type === 'aba') {
+        linhas.push(`🏦 **Routing (ABA):** \`${addr.aba?.routing_number}\``);
+        linhas.push(`💳 **Account Number:** \`${addr.aba?.account_number}\``);
+        linhas.push(`🏢 **Banco:** ${addr.aba?.bank_name || 'Stripe'}`);
+      }
+    }
+  }
+  if (dados.reference) linhas.push(`🔖 **Referência:** \`${dados.reference}\``);
+  if (dados.note)      linhas.push(`> ⚠️ ${dados.note}`);
+  return linhas.length ? linhas.join('\n') : '> Dados bancários gerados. Verifique no Stripe Dashboard.';
+}
+
 module.exports = async (interaction, client) => {
   const id = interaction.customId;
 
@@ -183,22 +212,60 @@ module.exports = async (interaction, client) => {
     await interaction.deferReply({ flags: 64 });
     try {
       const stripe  = require('../systems/stripe');
-      const { MOEDAS, GRUPOS_METODO } = stripe;
+      const { MOEDAS, GRUPOS_METODO, criarTransferenciaBancaria } = stripe;
+      const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
       const info    = MOEDAS[moeda];
       const produto = Produtos.get(pedido.produto_id);
 
+      // ── Bank Transfer — conta virtual ACH/SEPA ─────────────────────────
+      if (metodo === 'bank_transfer') {
+        const usuario = db.prepare('SELECT * FROM usuarios WHERE discord_id=?').get(pedido.usuario_id);
+        const transf  = await criarTransferenciaBancaria({
+          valorBrl:    pedido.valor_total,
+          descricao:   `Máximo Store — ${produto?.nome || 'Produto'}`,
+          pedidoId,
+          moeda,
+          nomeCliente: usuario?.nome || interaction.user.username,
+        });
+
+        db.prepare("UPDATE pedidos SET tx_id=?, metodo_pag=? WHERE id=?")
+          .run(`BT_${transf.paymentIntentId}`, `bank_transfer_${moeda.toLowerCase()}`, pedidoId);
+
+        const infosBanc = dadosBancarios(transf.dadosBancarios, moeda);
+
+        return interaction.editReply({
+          embeds: [new EmbedBuilder()
+            .setColor(0x1A73E8)
+            .setTitle(`🏦 Transferência Bancária — ${info.nome} (${moeda})`)
+            .setDescription([
+              `> Transfira para a conta virtual abaixo. O Stripe identifica automaticamente.`,
+              '',
+              infosBanc,
+            ].join('\n'))
+            .addFields(
+              { name: `${info.emoji} Valor`, value: `**${info.simbolo}${transf.valorMoeda}**`,          inline: true },
+              { name: '🇧🇷 Valor BRL',        value: `R$ ${Number(pedido.valor_total).toFixed(2)}`,      inline: true },
+            )
+            .setTimestamp()
+            .setFooter({ text: 'Máximo Store • Stripe Bank Transfer — válido por 7 dias' })],
+          components: [new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`verificar_stripe_${pedidoId}`).setLabel('🔄 Verificar Pagamento').setStyle(ButtonStyle.Primary),
+          )],
+        });
+      }
+
+      // ── Checkout normal (cartão, boleto, etc.) ─────────────────────────
       const checkout = await stripe.criarCheckout({
         valorBrl:  pedido.valor_total,
         descricao: `Máximo Store — ${produto?.nome || 'Produto'}`,
         pedidoId,
         moeda,
-        metodo: metodo === 'auto' ? null : metodo,
+        metodo:    (metodo === 'auto' || metodo === 'card') ? null : metodo,
       });
 
       db.prepare("UPDATE pedidos SET tx_id=?, metodo_pag=? WHERE id=?")
         .run(`ST_${checkout.sessionId}`, `stripe_${moeda.toLowerCase()}_${metodo}`, pedidoId);
 
-      const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
       const metodoInfo  = GRUPOS_METODO[metodo] || { label: 'Automático', emoji: '⚡' };
       const metodoLabel = metodo === 'auto' ? '⚡ Automático' : metodoInfo.label;
 
