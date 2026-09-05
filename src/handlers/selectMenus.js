@@ -7,6 +7,12 @@ const { isStaff } = require('../utils/permissions');
 module.exports = async (interaction, client) => {
   const id = interaction.customId;
 
+  // ── Envio manual de produto (pa_*) ────────────────────────────────────────
+  if (id === 'pa_select_produto_envio' || id.startsWith('pa_select_variante_envio_')) {
+    const { handlePainelAdmin } = require('../systems/painelAdmin');
+    return handlePainelAdmin(interaction, client);
+  }
+
   // ── Seleção de idioma ─────────────────────────────────────────────────────
   if (id === 'selecionar_idioma') {
     const { setIdioma, IDIOMAS, t } = require('../systems/i18n');

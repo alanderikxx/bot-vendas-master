@@ -214,14 +214,18 @@ function buildOperacoesMenu() {
   );
 
   const row3 = new ActionRowBuilder().addComponents(
-    btn('pa_reentregas',    '📦 Reentregas',      ButtonStyle.Secondary),
-    btn('pa_reenviar_produto','🔄 Reenviar',       ButtonStyle.Secondary),
-    btn('pa_vendas_produto', '📊 Receita',         ButtonStyle.Secondary),
-    btn('pa_nota_fiscal',   '🧾 Nota Fiscal',      ButtonStyle.Secondary),
-    btn('pa_home',          '🔙 Voltar',           ButtonStyle.Secondary),
+    btn('pa_reentregas',      '📦 Reentregas',      ButtonStyle.Secondary),
+    btn('pa_reenviar_produto','🔄 Reenviar',         ButtonStyle.Secondary),
+    btn('pa_enviar_produto',  '📤 Enviar Produto',   ButtonStyle.Success),
+    btn('pa_vendas_produto',  '📊 Receita',          ButtonStyle.Secondary),
+    btn('pa_nota_fiscal',     '🧾 Nota Fiscal',      ButtonStyle.Secondary),
   );
 
-  return { embed, components: [row1, row2, row3] };
+  const row4 = new ActionRowBuilder().addComponents(
+    btn('pa_home', '🔙 Voltar', ButtonStyle.Secondary),
+  );
+
+  return { embed, components: [row1, row2, row3, row4] };
 }
 
 // ─── Menu Usuários (Admin+) ───────────────────────────────────────────────────
@@ -660,6 +664,131 @@ async function handlePainelAdmin(interaction, client) {
       mRow(new TextInputBuilder().setCustomId('titulo').setLabel('Título da mensagem').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('🎉 Novidade!')),
       mRow(new TextInputBuilder().setCustomId('mensagem').setLabel('Mensagem').setStyle(TextInputStyle.Paragraph).setRequired(true).setPlaceholder('Olá! Temos uma novidade...')),
       mRow(new TextInputBuilder().setCustomId('produto_id').setLabel('Filtrar por produto ID (vazio = todos)').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Primeiros 8 chars do produto')),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ── Enviar produto manualmente ────────────────────────────────────────────
+  if (id === 'pa_enviar_produto') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+
+    // Buscar todos os produtos ativos com variantes
+    const produtos = db.prepare(`
+      SELECT p.id, p.nome,
+        (SELECT COUNT(*) FROM variantes_produto WHERE produto_id=p.id AND ativo=1) as num_vars,
+        (SELECT COUNT(*) FROM estoque_variante ev JOIN variantes_produto vp ON ev.variante_id=vp.id WHERE vp.produto_id=p.id AND ev.usado=0) as estoque
+      FROM produtos p WHERE p.ativo=1 ORDER BY p.nome ASC LIMIT 25
+    `).all();
+
+    if (!produtos.length) return interaction.reply({ content: '❌ Nenhum produto ativo encontrado.', ephemeral: true });
+
+    const { StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
+
+    const opcoes = produtos.map(p =>
+      new StringSelectMenuOptionBuilder()
+        .setValue(p.id)
+        .setLabel(p.nome.slice(0, 100))
+        .setDescription(`${p.num_vars} variante(s) • ${p.estoque} item(s) em estoque`)
+        .setEmoji('📦'),
+    );
+
+    const selectRow = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('pa_select_produto_envio')
+        .setPlaceholder('Selecione o produto...')
+        .addOptions(opcoes),
+    );
+
+    return interaction.reply({
+      embeds: [new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('📤 Enviar Produto')
+        .setDescription([
+          '> Selecione o produto que deseja enviar.',
+          '> Em seguida você escolherá a variante e o destinatário.',
+        ].join('\n'))
+        .setFooter({ text: 'Máximo Store • Envio Manual' })],
+      components: [selectRow],
+      ephemeral: true,
+    });
+  }
+
+  // ── Select produto → mostrar variantes ────────────────────────────────────
+  if (id === 'pa_select_produto_envio') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const produtoId = interaction.values[0];
+    const produto   = db.prepare('SELECT * FROM produtos WHERE id=?').get(produtoId);
+    if (!produto) return interaction.reply({ content: '❌ Produto não encontrado.', ephemeral: true });
+
+    const variantes = db.prepare(`
+      SELECT vp.*, (SELECT COUNT(*) FROM estoque_variante ev WHERE ev.variante_id=vp.id AND ev.usado=0) as estoque
+      FROM variantes_produto vp WHERE vp.produto_id=? AND vp.ativo=1 ORDER BY vp.ordem ASC LIMIT 25
+    `).all(produtoId);
+
+    if (!variantes.length) return interaction.reply({ content: '❌ Nenhuma variante ativa neste produto.', ephemeral: true });
+
+    const { StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
+
+    const opcoes = variantes.map(v =>
+      new StringSelectMenuOptionBuilder()
+        .setValue(v.id)
+        .setLabel(v.nome.slice(0, 100))
+        .setDescription(`R$ ${Number(v.preco).toFixed(2)} • ${v.estoque} item(s) disponível`)
+        .setEmoji(v.estoque > 0 ? '✅' : '⚠️'),
+    );
+
+    const selectRow = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`pa_select_variante_envio_${produtoId}`)
+        .setPlaceholder('Selecione a variante...')
+        .addOptions(opcoes),
+    );
+
+    return interaction.update({
+      embeds: [new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle(`📤 Enviar — ${produto.nome}`)
+        .setDescription('> Selecione a variante que deseja enviar.')
+        .setFooter({ text: 'Máximo Store • Envio Manual' })],
+      components: [selectRow],
+    });
+  }
+
+  // ── Select variante → modal de destinatário ───────────────────────────────
+  if (id.startsWith('pa_select_variante_envio_')) {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const produtoId  = id.replace('pa_select_variante_envio_', '');
+    const varianteId = interaction.values[0];
+    const variante   = db.prepare('SELECT * FROM variantes_produto WHERE id=?').get(varianteId);
+    const produto    = db.prepare('SELECT * FROM produtos WHERE id=?').get(produtoId);
+    if (!variante || !produto) return interaction.reply({ content: '❌ Variante não encontrada.', ephemeral: true });
+
+    const estoque = db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(varianteId).c;
+    if (estoque === 0) return interaction.reply({ content: `⚠️ Variante **${variante.nome}** sem estoque.`, ephemeral: true });
+
+    const modal = new ModalBuilder()
+      .setCustomId(`pam_enviar_produto_${varianteId}`)
+      .setTitle(`📤 Enviar — ${produto.nome.slice(0,30)}`);
+    modal.addComponents(
+      mRow(new TextInputBuilder()
+        .setCustomId('discord_id')
+        .setLabel('Discord ID do destinatário (opcional)')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setPlaceholder('Deixe vazio para enviar neste canal')),
+      mRow(new TextInputBuilder()
+        .setCustomId('quantidade')
+        .setLabel('Quantidade')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setValue('1')
+        .setMaxLength(2)),
+      mRow(new TextInputBuilder()
+        .setCustomId('motivo')
+        .setLabel('Motivo (aparece no log)')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setPlaceholder('Ex: Brinde, reenvio, giveaway...')),
     );
     return interaction.showModal(modal);
   }
@@ -1950,6 +2079,71 @@ async function handlePainelAdminModals(interaction, client) {
       try { addCoins(u.discord_id, qtd, motivo); count++; } catch {}
     }
     return interaction.editReply({ content: `✅ **${qtd} ${COIN_EMOJI}** adicionados para **${count}** usuários!\n**Motivo:** ${motivo}` });
+  }
+
+  // ─── Enviar produto manualmente (modal) ──────────────────────────────────
+  if (id.startsWith('pam_enviar_produto_')) {
+    await interaction.deferReply({ ephemeral: true });
+    const varianteId  = id.replace('pam_enviar_produto_', '');
+    const discordId   = interaction.fields.getTextInputValue('discord_id').trim();
+    const qtd         = Math.max(1, parseInt(interaction.fields.getTextInputValue('quantidade').trim()) || 1);
+    const motivo      = interaction.fields.getTextInputValue('motivo').trim() || 'Envio manual pelo admin';
+
+    const variante = db.prepare('SELECT * FROM variantes_produto WHERE id=?').get(varianteId);
+    if (!variante) return interaction.editReply({ content: '❌ Variante não encontrada.' });
+
+    const produto = db.prepare('SELECT * FROM produtos WHERE id=?').get(variante.produto_id);
+    if (!produto) return interaction.editReply({ content: '❌ Produto não encontrado.' });
+
+    // Pegar os itens do estoque
+    const { pegarItemVariante } = require('./painelProduto');
+    const itens = [];
+    for (let i = 0; i < qtd; i++) {
+      const item = db.prepare('SELECT * FROM estoque_variante WHERE variante_id=? AND usado=0 LIMIT 1').get(varianteId);
+      if (!item) break;
+      db.prepare("UPDATE estoque_variante SET usado=1, usado_por=?, usado_em=strftime('%s','now') WHERE id=?")
+        .run(interaction.user.id, item.id);
+      itens.push(item.conteudo);
+    }
+
+    if (!itens.length) return interaction.editReply({ content: '❌ Sem estoque disponível para esta variante.' });
+
+    const conteudo = itens.join('\n');
+    const embedProduto = new EmbedBuilder()
+      .setColor(config.colors.success)
+      .setTitle(`📦 ${produto.nome}`)
+      .setDescription([
+        motivo ? `> 📝 ${motivo}` : '',
+        '',
+        `**Variante:** ${variante.nome}`,
+        `**Quantidade:** ${itens.length}`,
+      ].filter(Boolean).join('\n'))
+      .addFields({ name: '🎁 Produto', value: `\`\`\`\n${conteudo.slice(0, 900)}\n\`\`\`` })
+      .setTimestamp()
+      .setFooter({ text: `Enviado por ${interaction.user.username} • Máximo Store` });
+
+    // Se tem Discord ID → envia DM
+    if (discordId) {
+      const membro = await interaction.guild.members.fetch(discordId).catch(() => null);
+      if (!membro) return interaction.editReply({ content: `❌ Usuário \`${discordId}\` não encontrado no servidor.` });
+      const enviado = await membro.send({ embeds: [embedProduto] }).catch(() => null);
+      if (!enviado) return interaction.editReply({ content: `❌ Não foi possível enviar DM para <@${discordId}> (DMs fechadas).` });
+
+      const { log } = require('../utils/logger');
+      await log('envio_manual', { executor: interaction.user.id, usuario: discordId, descricao: `📤 Envio manual: ${produto.nome} (${variante.nome}) x${itens.length} → <@${discordId}> — ${motivo}` });
+
+      return interaction.editReply({ content: `✅ **${itens.length}x ${produto.nome} — ${variante.nome}** enviado para <@${discordId}>!` });
+    }
+
+    // Sem Discord ID → envia no canal onde está o painel/menu
+    const canal = interaction.channel;
+    if (!canal) return interaction.editReply({ content: '❌ Canal não encontrado.' });
+    await canal.send({ embeds: [embedProduto] }).catch(() => {});
+
+    const { log } = require('../utils/logger');
+    await log('envio_manual', { executor: interaction.user.id, descricao: `📤 Envio manual: ${produto.nome} (${variante.nome}) x${itens.length} no canal <#${canal.id}> — ${motivo}` });
+
+    return interaction.editReply({ content: `✅ **${itens.length}x ${produto.nome} — ${variante.nome}** enviado em <#${canal.id}>!` });
   }
 
   // ─── Config canal de vendas ───────────────────────────────────────────────
