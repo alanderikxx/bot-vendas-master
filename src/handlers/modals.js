@@ -50,6 +50,8 @@ module.exports = async (interaction, client) => {
       case 'ccm_titulo':    return cc.processarTitulo(interaction);
       case 'ccm_descricao': return cc.processarDescricao(interaction);
       case 'ccm_imagem':    return cc.processarImagem(interaction);
+      case 'ccm_thumbnail': return cc.processarThumbnail(interaction);
+      case 'ccm_add_plano': return cc.processarAddPlano(interaction);
     }
     return;
   }

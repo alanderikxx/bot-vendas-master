@@ -1200,13 +1200,17 @@ async function handlePainelAdmin(interaction, client) {
   if (id.startsWith('cc_')) {
     const cc = require('./criarCarrinhoSub');
     switch (id) {
-      case 'cc_canal':    return cc.modalCanal(interaction);
-      case 'cc_titulo':   return cc.modalTitulo(interaction);
-      case 'cc_descricao': return cc.modalDescricao(interaction);
-      case 'cc_imagem':   return cc.modalImagem(interaction);
-      case 'cc_publicar': return cc.publicar(interaction);
-      case 'cc_salvar':   return cc.salvar(interaction);
-      case 'cc_cancelar': return cc.cancelar(interaction);
+      case 'cc_canal':           return cc.modalCanal(interaction);
+      case 'cc_titulo':          return cc.modalTitulo(interaction);
+      case 'cc_descricao':       return cc.modalDescricao(interaction);
+      case 'cc_imagem':          return cc.modalImagem(interaction);
+      case 'cc_thumbnail':       return cc.modalThumbnail(interaction);
+      case 'cc_add_plano':       return cc.modalAddPlano(interaction);
+      case 'cc_rem_plano':       return cc.mostrarRemPlano(interaction);
+      case 'cc_rem_plano_select':return cc.processarRemPlano(interaction);
+      case 'cc_publicar':        return cc.publicar(interaction);
+      case 'cc_salvar':          return cc.salvar(interaction);
+      case 'cc_cancelar':        return cc.cancelar(interaction);
     }
   }
 

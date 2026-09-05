@@ -326,6 +326,14 @@ function sanitizar(str, max = 100) {
   return (str || '').trim().slice(0, max) || '?';
 }
 
+// ─── Verificar flash sale ativa para um produto ───────────────────────────────
+function getFlashSale(produtoId) {
+  try {
+    const { flashSalesAtivas } = require('./flashsale');
+    return flashSalesAtivas?.get(produtoId) || null;
+  } catch { return null; }
+}
+
 // ─── Montar componentes do painel publicado ───────────────────────────────────
 function montarComponentes(variantes, painelId) {
   if (!variantes.length) return [];
@@ -333,33 +341,46 @@ function montarComponentes(variantes, painelId) {
   const produtoId = variantes[0]?.produto_id;
   const produto   = produtoId ? db.prepare('SELECT nome, tipo FROM produtos WHERE id=?').get(produtoId) : null;
   const isCoins   = produto?.nome?.toLowerCase().includes('coin') || produto?.tipo === 'coins';
+  const fs        = getFlashSale(produtoId);
 
   const options = variantes.slice(0, 25).map(v => {
-    const qtd       = isCoins ? null : (db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id)?.c || 0);
+    const qtd        = isCoins ? null : (db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id)?.c || 0);
     const temEstoque = isCoins || qtd > 0;
-    const preco = `R$ ${Number(v.preco).toFixed(2)}`;
-    const nome  = sanitizar(v.nome, 90 - preco.length) || 'Plano';
-    const label = `${temEstoque ? '' : '❌ '}${nome} • ${preco}`.slice(0, 100);
 
-    // Description: estoque no lado direito (field description aparece abaixo do label no Discord)
+    // Preço com flash sale aplicado
+    const precoBase = Number(v.preco);
+    const precoFS   = fs ? parseFloat((precoBase * (1 - fs.desconto / 100)).toFixed(2)) : null;
+    const precoStr  = precoFS
+      ? `R$ ${precoFS.toFixed(2)} 🔥`
+      : `R$ ${precoBase.toFixed(2)}`;
+
+    // Emoji de status
+    const statusEmoji = !temEstoque ? '❌' : qtd <= 3 ? '⚠️' : '✅';
+    const nome = sanitizar(v.nome, 80 - precoStr.length) || 'Plano';
+    const label = `${statusEmoji} ${nome} — ${precoStr}`.slice(0, 100);
+
+    // Description: estoque + desconto se flash sale
     let desc;
     if (isCoins) {
       desc = '🪙 Entrega automática';
-    } else if (qtd === 0) {
-      desc = '❌ Sem estoque';
+    } else if (!temEstoque) {
+      desc = '❌ Sem estoque disponível';
     } else {
-      const descCustom = v.descricao ? sanitizar(v.descricao, 60) : null;
-      desc = descCustom ? `${descCustom} • 📦 ${qtd} un.` : `📦 ${qtd} unidade(s) disponível`;
+      const descCustom = v.descricao ? sanitizar(v.descricao, 40) : null;
+      const estoqueStr = qtd <= 5 ? `⚠️ Últimas ${qtd} un.` : `📦 ${qtd} disponíveis`;
+      const fsStr      = precoFS ? ` • era R$ ${precoBase.toFixed(2)}` : '';
+      desc = descCustom
+        ? `${descCustom} • ${estoqueStr}${fsStr}`
+        : `${estoqueStr}${fsStr}`;
     }
 
     return { label, description: desc.slice(0, 100), value: v.id };
   });
 
-  // JSON raw para evitar validação shapeshift com caracteres Unicode especiais
   return [{ type: 1, components: [{
     type: 3,
     custom_id: `painel_selecionar_${painelId}`,
-    placeholder: 'Selecione um plano',
+    placeholder: '🛒 Selecione um plano para comprar',
     options,
     min_values: 1,
     max_values: 1,
@@ -384,6 +405,7 @@ async function atualizarPainelProduto(guild, painelId) {
     const msg = await canal.messages.fetch(painel.mensagem_id);
 
     const cor = parseInt(painel.cor || 'FF6B6B', 16);
+    const isCoins = produto?.nome?.toLowerCase().includes('coin') || produto?.tipo === 'coins';
 
     // Imagem: URL salva no banco ou URL externa (não attachment expirado)
     const imagemBanco    = painel.imagem_url || null;
@@ -394,11 +416,24 @@ async function atualizarPainelProduto(guild, painelId) {
       !imagemOriginal.includes('media.discordapp.net/attachments')
       ? imagemOriginal : null;
     const imagemValida = imagemBanco || imagemCDN;
-    // Thumbnail fixa — imagem padrão da loja hospedada no Imgur (permanente)
-    const thumbnailUrl = 'https://i.imgur.com/YyHI49C.jpeg';
 
-    // Montar embed como JSON puro — bypassa validação shapeshift (aceita qualquer Unicode)
-    // Formatar descrição com blockquote (>) em cada linha
+    // Thumbnail: usa imagem do produto se disponível, senão thumbnail do painel, senão padrão
+    const thumbnailProduto = produto.thumbnail_url || painel.thumbnail_url || null;
+    const THUMBNAIL_PADRAO = 'https://i.imgur.com/YyHI49C.jpeg';
+    const thumbnailUrl = thumbnailProduto || THUMBNAIL_PADRAO;
+
+    // Flash sale ativa para este produto?
+    const fs = getFlashSale(painel.produto_id);
+
+    // Verificar se TODAS as variantes estão sem estoque
+    const totalEstoque = db.prepare(`
+      SELECT COUNT(*) as c FROM estoque_variante ev
+      JOIN variantes_produto vp ON ev.variante_id = vp.id
+      WHERE vp.produto_id=? AND ev.usado=0 AND vp.ativo=1
+    `).get(painel.produto_id).c;
+    const semEstoque = totalEstoque === 0 && variantes.length > 0;
+
+    // Formatar descrição
     const descricaoBruta = painel.descricao || 'Selecione um plano abaixo para comprar.';
     const descricaoFormatada = descricaoBruta
       .split('\n')
@@ -406,10 +441,24 @@ async function atualizarPainelProduto(guild, painelId) {
       .join('\n')
       .slice(0, 4096);
 
+    // Montar embed
+    const corFinal = semEstoque ? 0x95A5A6  // cinza quando sem estoque
+                   : fs         ? 0xFF4757  // vermelho flash sale
+                   : isNaN(cor) ? 0xFF6B6B
+                   : cor;
+
+    let tituloFinal = `🛍️ ${(painel.titulo || produto.nome || 'Produto').slice(0, 256)}`;
+    if (fs)         tituloFinal = `⚡ FLASH SALE — ${tituloFinal}`;
+    if (semEstoque) tituloFinal = `🔴 ${(painel.titulo || produto.nome || 'Produto').slice(0, 256)}`;
+
     const embedData = {
-      color:       isNaN(cor) ? 0xFF6B6B : cor,
-      title:       `🛍️ ${(painel.titulo || produto.nome || 'Produto').slice(0, 256)}`,
-      description: descricaoFormatada,
+      color:       corFinal,
+      title:       tituloFinal,
+      description: semEstoque
+        ? `> ❌ **Produto temporariamente sem estoque.**\n> Acompanhe nossas redes para saber quando voltará!\n\n${descricaoFormatada}`
+        : fs
+          ? `> ⚡ **OFERTA RELÂMPAGO — ${fs.desconto}% OFF!**\n> Termina <t:${Math.floor(fs.expira/1000)}:R>\n\n${descricaoFormatada}`
+          : descricaoFormatada,
       timestamp:   new Date().toISOString(),
       footer:      { text: 'Máximo Store • Selecione um plano para comprar' },
       thumbnail:   { url: thumbnailUrl },

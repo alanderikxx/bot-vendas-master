@@ -13,6 +13,12 @@ module.exports = async (interaction, client) => {
     return handlePainelAdmin(interaction, client);
   }
 
+  // ── Remover plano do builder de carrinho ──────────────────────────────────
+  if (id === 'cc_rem_plano_select') {
+    const cc = require('../systems/criarCarrinhoSub');
+    return cc.processarRemPlano(interaction);
+  }
+
   // ── Seleção de idioma ─────────────────────────────────────────────────────
   if (id === 'selecionar_idioma') {
     const { setIdioma, IDIOMAS, t } = require('../systems/i18n');
