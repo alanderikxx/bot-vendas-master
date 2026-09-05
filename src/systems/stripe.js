@@ -112,9 +112,19 @@ async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD', met
   });
 
   if (metodo && metodo !== 'auto') {
-    params.append('payment_method_types[]', metodo);
-    if (metodo === 'boleto') {
-      params.set('payment_method_options[boleto][expires_after_days]', '3');
+    // Boleto só funciona em BRL — se passar boleto em outra moeda, usa automático
+    if (metodo === 'boleto' && moeda !== 'BRL') {
+      params.append('automatic_payment_methods[enabled]', 'true');
+      params.append('automatic_payment_methods[allow_redirects]', 'always');
+    } else if (metodo === 'card') {
+      // 'card' como payment_method_types não é mais aceito — usar automático
+      params.append('automatic_payment_methods[enabled]', 'true');
+      params.append('automatic_payment_methods[allow_redirects]', 'always');
+    } else {
+      params.append('payment_method_types[]', metodo);
+      if (metodo === 'boleto') {
+        params.set('payment_method_options[boleto][expires_after_days]', '3');
+      }
     }
   } else {
     // Automático — Stripe exibe cartão + Apple Pay + Google Pay + Link + Boleto
