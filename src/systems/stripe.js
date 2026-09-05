@@ -116,9 +116,10 @@ async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD', met
   if (metodo === 'boleto' && moeda === 'BRL') {
     params.append('payment_method_types[]', 'boleto');
     params.set('payment_method_options[boleto][expires_after_days]', '3');
+  } else {
+    // Sempre passa card explicitamente — garante funcionamento em todas as moedas
+    params.append('payment_method_types[]', 'card');
   }
-  // Para todos os outros casos não passa payment_method_types
-  // O Stripe usa automaticamente os métodos habilitados na conta (cartão, Apple Pay, Google Pay, Link)
 
   let resData;
   try {
