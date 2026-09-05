@@ -70,6 +70,34 @@ async function enviarEmbedCaixasCanal(guild, canalId) {
   const caixas = listarCaixasAtivas();
   if (!caixas.length) return;
 
+  // Montar descrição com probabilidades visuais por caixa
+  const descCaixas = caixas.map(c => {
+    const itens     = getItensCaixa(c.id);
+    const totalEst  = itens.reduce((a, i) => a + i.estoque, 0);
+
+    // Agrupar chances por raridade
+    const chancePorRar = {};
+    for (const i of itens) {
+      chancePorRar[i.raridade] = (chancePorRar[i.raridade] || 0) + i.chance;
+    }
+    const barraRar = Object.entries(RARIDADES)
+      .filter(([k]) => chancePorRar[k])
+      .map(([k, r]) => `${r.emoji} ${r.label} **${chancePorRar[k].toFixed(0)}%**`)
+      .join(' • ');
+
+    const linhasItens = itens.map(i => {
+      const r = RARIDADES[i.raridade] || RARIDADES.comum;
+      const est = i.estoque > 0 ? `${i.estoque} un.` : '❌';
+      return `${r.emoji} **${i.variante_nome}** — ${i.chance}% — ${est}`;
+    });
+
+    return [
+      `**🎁 ${c.nome}** — R$ ${c.preco.toFixed(2)} | 📦 ${totalEst} disponíveis | 🎰 ${c.total_abertas} abertas`,
+      barraRar ? `> ${barraRar}` : '',
+      ...linhasItens,
+    ].filter(Boolean).join('\n');
+  }).join('\n\n');
+
   const embed = new EmbedBuilder()
     .setColor(0xFFD700)
     .setTitle('🎁 Caixas Misteriosas')
@@ -77,45 +105,46 @@ async function enviarEmbedCaixasCanal(guild, canalId) {
       '> Abra uma caixa e descubra o que está dentro!',
       '> Pague via **PIX** ou **🪙 Coins** e receba no privado.',
       '',
-      ...caixas.map(c => {
-        const itens = getItensCaixa(c.id);
-        const totalEst = itens.reduce((a, i) => a + i.estoque, 0);
-        const linhas = itens.map(i => `${RARIDADES[i.raridade]?.emoji || '⚪'} **${i.variante_nome}** — ${i.chance}%`);
-        return [
-          `**🎁 ${c.nome}** — R$ ${c.preco.toFixed(2)} | ${totalEst} itens disponíveis`,
-          ...linhas,
-        ].join('\n');
-      }),
+      descCaixas,
     ].join('\n'))
     .setTimestamp()
     .setFooter({ text: `Máximo Store • ${caixas.reduce((a, c) => a + c.total_abertas, 0)} caixas abertas` });
 
-  // Imagem da primeira caixa com imagem configurada
   const caixaComImg = caixas.find(c => c.imagem_url);
   if (caixaComImg) embed.setImage(caixaComImg.imagem_url);
 
-  // Select menu com as caixas disponíveis
-  const options = caixas.map(c => ({
-    label:       c.nome.slice(0, 100),
-    description: `R$ ${c.preco.toFixed(2)} • ${getItensCaixa(c.id).length} itens possíveis`,
-    value:       c.id,
-    emoji:       '🎁',
-  }));
-
+  // Se só tem 1 caixa → botão direto; mais de 1 → select menu
   const rows = [];
-  if (options.length > 0) {
+  if (caixas.length === 1) {
+    rows.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`abrir_caixa_${caixas[0].id}`)
+        .setLabel(`🎁 Abrir ${caixas[0].nome} — R$ ${caixas[0].preco.toFixed(2)}`)
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('historico_caixa').setLabel('📜 Histórico').setStyle(ButtonStyle.Secondary),
+    ));
+  } else {
+    const options = caixas.map(c => {
+      const itens    = getItensCaixa(c.id);
+      const totalEst = itens.reduce((a, i) => a + i.estoque, 0);
+      return {
+        label:       c.nome.slice(0, 100),
+        description: `R$ ${c.preco.toFixed(2)} • ${itens.length} itens possíveis • ${totalEst} em estoque`,
+        value:       c.id,
+        emoji:       '🎁',
+      };
+    });
     rows.push(new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId('caixa_selecionar_canal')
         .setPlaceholder('🎁 Escolha uma caixa para abrir...')
         .addOptions(options),
     ));
+    rows.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('historico_caixa').setLabel('📜 Meu Histórico').setStyle(ButtonStyle.Secondary),
+    ));
   }
-  rows.push(new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('historico_caixa').setLabel('📜 Meu Histórico').setStyle(ButtonStyle.Secondary),
-  ));
 
-  // Verificar se já tem embed no canal
   const msgs = await canal.messages.fetch({ limit: 10 }).catch(() => null);
   const existente = msgs?.find(m =>
     m.author.id === guild.client.user.id &&
@@ -143,13 +172,24 @@ async function iniciarCompraCaixa(interaction, caixaId, client) {
   if (!caixa || !caixa.ativa) return interaction.editReply({ content: '❌ Caixa não disponível.' });
 
   const itens = getItensCaixa(caixaId);
-  const temEstoque = itens.some(i => i.estoque > 0);
-  if (!temEstoque) {
+  const itensCom = itens.filter(i => i.estoque > 0);
+  if (!itensCom.length) {
+    const chancePorRar = {};
+    for (const i of itens) chancePorRar[i.raridade] = (chancePorRar[i.raridade] || 0) + i.chance;
+    const barraRar = Object.entries(RARIDADES)
+      .filter(([k]) => chancePorRar[k])
+      .map(([k, r]) => `${r.emoji} ${r.label} ${chancePorRar[k].toFixed(0)}%`)
+      .join(' • ');
     return interaction.editReply({
       embeds: [new EmbedBuilder()
-        .setColor(config.colors.error)
-        .setTitle('❌ Caixa Esgotada')
-        .setDescription('Esta caixa não tem itens disponíveis no momento.')
+        .setColor(0x95A5A6)
+        .setTitle('📦 Caixa Esgotada')
+        .setDescription([
+          `> **${caixa.nome}** está temporariamente sem estoque.`,
+          `> Aguarde o reabastecimento!`,
+          '',
+          barraRar ? `Probabilidades: ${barraRar}` : '',
+        ].filter(Boolean).join('\n'))
         .setTimestamp()],
     });
   }
@@ -249,15 +289,25 @@ async function entregarPrêmioCaixa(pedido, client) {
 
     const msgAnim = await member.send({ embeds: [embedAnim] }).catch(() => null);
     if (msgAnim) {
-      const frames = ['🟨⬜⬜⬜⬜⬜⬜⬜⬜⬜','🟨🟨🟨⬜⬜⬜⬜⬜⬜⬜','🟨🟨🟨🟨🟨⬜⬜⬜⬜⬜','🟨🟨🟨🟨🟨🟨🟨🟨⬜⬜'];
-      for (const f of frames) {
-        await new Promise(r => setTimeout(r, 600));
+      // Animação de suspense por raridade
+      const raridade  = itemSorteado.raridade;
+      const framesPre = raridade === 'lendario'
+        ? ['🌑🌑🌑🌑🌑🌑🌑🌑🌑🌑','🌒🌑🌑🌑🌑🌑🌑🌑🌑🌑','🌓🌒🌑🌑🌑🌑🌑🌑🌑🌑','🌔🌓🌒🌑🌑🌑🌑🌑🌑🌑','🌕🌔🌓🌒🌑🌑🌑🌑🌑🌑','🌟🌕🌔🌓🌒🌑🌑🌑🌑🌑','✨🌟🌕🌔🌓🌒🌑🌑🌑🌑','🎆✨🌟🌕🌔🌓🌒🌑🌑🌑','🎇🎆✨🌟🌕🌔🌓🌒🌑🌑']
+        : raridade === 'epico'
+          ? ['⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛','🟪⬛⬛⬛⬛⬛⬛⬛⬛⬛','🟪🟪⬛⬛⬛⬛⬛⬛⬛⬛','🟪🟪🟪🟪⬛⬛⬛⬛⬛⬛','🟪🟪🟪🟪🟪🟪⬛⬛⬛⬛','✨🟪🟪🟪🟪🟪🟪🟪⬛⬛']
+          : raridade === 'raro'
+            ? ['⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜','🟦⬜⬜⬜⬜⬜⬜⬜⬜⬜','🟦🟦🟦⬜⬜⬜⬜⬜⬜⬜','🟦🟦🟦🟦🟦⬜⬜⬜⬜⬜','🟦🟦🟦🟦🟦🟦🟦🟦⬜⬜']
+            : ['⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜','🟨⬜⬜⬜⬜⬜⬜⬜⬜⬜','🟨🟨🟨⬜⬜⬜⬜⬜⬜⬜','🟨🟨🟨🟨🟨🟨⬜⬜⬜⬜'];
+
+      const delay = raridade === 'lendario' ? 500 : raridade === 'epico' ? 550 : 600;
+      for (const f of framesPre) {
+        await new Promise(r => setTimeout(r, delay));
         embedAnim.setDescription(`✨ *Sorteando...*\n\n\`\`\`\n${f}\n\`\`\``);
         await msgAnim.edit({ embeds: [embedAnim] }).catch(() => {});
       }
-      await new Promise(r => setTimeout(r, 800));
+      await new Promise(r => setTimeout(r, 900));
 
-      // Resultado
+      // Embed de resultado com imagem do item
       const embedRes = new EmbedBuilder()
         .setColor(rar.cor)
         .setTitle(`${rar.emoji} ${rar.label.toUpperCase()} — ${itemSorteado.variante_nome}`)
@@ -267,21 +317,27 @@ async function entregarPrêmioCaixa(pedido, client) {
           `Você abriu a **${caixa.nome}** e ganhou:`,
           `> ${rar.emoji} **${itemSorteado.variante_nome}** *(${rar.stars})*`,
           '',
-          conteudo ? `📋 **Seu prêmio:**\n\`\`\`\n${conteudo}\n\`\`\`` : '📦 Prêmio sendo processado.',
+          conteudo ? `📋 **Seu prêmio:**\n\`\`\`\n${conteudo.slice(0, 800)}\n\`\`\`` : '📦 Prêmio sendo processado.',
         ].join('\n'))
         .addFields(
-          { name: '📦 Produto',   value: itemSorteado.produto_nome,                 inline: true },
-          { name: `${rar.emoji} Raridade`, value: rar.label,                       inline: true },
-          { name: '🎲 Chance',    value: `${itemSorteado.chance}%`,                 inline: true },
-          { name: '💵 Pago',      value: `R$ ${pedido.valor_total.toFixed(2)}`,     inline: true },
-          { name: '🆔 Pedido',    value: `\`${pedido.id.slice(0,8).toUpperCase()}\``, inline: true },
+          { name: '📦 Produto',             value: itemSorteado.produto_nome,                      inline: true },
+          { name: `${rar.emoji} Raridade`,   value: `${rar.label} ${rar.stars}`,                   inline: true },
+          { name: '🎲 Chance',               value: `${itemSorteado.chance}%`,                      inline: true },
+          { name: '💵 Pago',                 value: `R$ ${pedido.valor_total.toFixed(2)}`,           inline: true },
+          { name: '🆔 Pedido',               value: `\`${pedido.id.slice(0,8).toUpperCase()}\``,    inline: true },
+          { name: '📦 Estoque restante',     value: `${Math.max(0, (itemSorteado.estoque || 1) - 1)} un.`, inline: true },
         )
         .setTimestamp()
         .setFooter({ text: 'Máximo Store • Caixa Misteriosa ❤️' });
 
+      // Imagem do item ganho (se disponível)
+      if (itemSorteado.imagem_url) embedRes.setImage(itemSorteado.imagem_url);
+      else if (caixa.imagem_url)   embedRes.setThumbnail(caixa.imagem_url);
+
       const rowConf = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`confirmar_entrega_${pedido.id}`).setLabel('✅ Confirmar').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`confirmar_entrega_${pedido.id}`).setLabel('✅ Confirmar Recebimento').setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId(`avaliar_${pedido.id}`).setLabel('⭐ Avaliar').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('historico_caixa').setLabel('📜 Meu Histórico').setStyle(ButtonStyle.Secondary),
       );
 
       await msgAnim.edit({ embeds: [embedRes], components: [rowConf] }).catch(() => {});
@@ -319,21 +375,52 @@ async function mostrarHistorico(interaction) {
   if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
 
   const hist = db.prepare(`
-    SELECT ch.*, vp.nome as item_nome, cc.nome as caixa_nome
+    SELECT ch.*, vp.nome as item_nome, cc.nome as caixa_nome, cc.preco as caixa_preco
     FROM caixa_historico ch
     JOIN variantes_produto vp ON ch.variante_id=vp.id
     JOIN caixa_config cc ON ch.caixa_id=cc.id
-    WHERE ch.usuario_id=? ORDER BY ch.aberta_em DESC LIMIT 10
+    WHERE ch.usuario_id=? ORDER BY ch.aberta_em DESC LIMIT 15
   `).all(interaction.user.id);
 
   if (!hist.length) return interaction.editReply({ content: '📜 Você ainda não abriu nenhuma caixa.' });
 
-  const embed = new EmbedBuilder().setColor(0xFFD700).setTitle('📜 Histórico de Caixas').setTimestamp();
-  for (const h of hist) {
+  // Estatísticas
+  const stats = db.prepare(`
+    SELECT COUNT(*) as total,
+      SUM(cc.preco) as total_gasto,
+      COUNT(CASE WHEN ch.raridade='lendario' THEN 1 END) as lendarios,
+      COUNT(CASE WHEN ch.raridade='epico'    THEN 1 END) as epicos,
+      COUNT(CASE WHEN ch.raridade='raro'     THEN 1 END) as raros,
+      COUNT(CASE WHEN ch.raridade='comum'    THEN 1 END) as comuns
+    FROM caixa_historico ch
+    JOIN caixa_config cc ON ch.caixa_id=cc.id
+    WHERE ch.usuario_id=?
+  `).get(interaction.user.id);
+
+  const melhor = hist.find(h => h.raridade === 'lendario') || hist.find(h => h.raridade === 'epico') || hist[0];
+  const melhorRar = RARIDADES[melhor?.raridade] || RARIDADES.comum;
+
+  const embed = new EmbedBuilder()
+    .setColor(0xFFD700)
+    .setTitle('📜 Histórico de Caixas')
+    .addFields(
+      { name: '🎰 Total abertas',   value: `**${stats.total}**`,                                      inline: true },
+      { name: '💰 Total gasto',     value: `**R$ ${Number(stats.total_gasto || 0).toFixed(2)}**`,      inline: true },
+      { name: '🏆 Melhor item',     value: `${melhorRar.emoji} **${melhor?.item_nome || '—'}**`,        inline: true },
+      { name: '🌟 Lendários',       value: `**${stats.lendarios}**`,                                   inline: true },
+      { name: '🟣 Épicos',          value: `**${stats.epicos}**`,                                      inline: true },
+      { name: '🔵 Raros',           value: `**${stats.raros}**`,                                       inline: true },
+    )
+    .setTimestamp();
+
+  // Últimas 10 aberturas
+  const linhas = hist.slice(0, 10).map(h => {
     const rar  = RARIDADES[h.raridade] || RARIDADES.comum;
     const data = new Date(h.aberta_em * 1000).toLocaleDateString('pt-BR');
-    embed.addFields({ name: `${rar.emoji} ${h.item_nome}`, value: `📦 ${h.caixa_nome} • ${rar.label} • ${data}`, inline: true });
-  }
+    return `${rar.emoji} **${h.item_nome.slice(0, 25)}** — ${h.caixa_nome.slice(0, 20)} — ${data}`;
+  });
+  embed.setDescription(linhas.join('\n'));
+
   return interaction.editReply({ embeds: [embed] });
 }
 

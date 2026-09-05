@@ -24,6 +24,13 @@ module.exports = async (interaction, client) => {
     return iniciarCompraCaixa(interaction, null, client);
   }
 
+  // ── Abrir caixa específica (botão direto quando há 1 caixa) ───────────────────
+  if (id.startsWith('abrir_caixa_')) {
+    const caixaId = id.replace('abrir_caixa_', '');
+    const { iniciarCompraCaixa } = require('../systems/caixaMisteriosa');
+    return iniciarCompraCaixa(interaction, caixaId, client);
+  }
+
   // ── Histórico da caixa ────────────────────────────────────────────────────────
   if (id === 'historico_caixa') {
     const { mostrarHistorico } = require('../systems/caixaMisteriosa');
