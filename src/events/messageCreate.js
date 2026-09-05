@@ -6,6 +6,53 @@ module.exports = {
   name: 'messageCreate',
   async execute(message) {
     if (message.author.bot) return;
+
+    // ── Comando !clear em DM (só Owner) ────────────────────────────────────
+    if (!message.guild && message.content.toLowerCase().startsWith('!clear')) {
+      const config  = require('../config');
+      const ownerId = config.roles?.owner
+        ? null  // owner é cargo, não ID — usa env
+        : null;
+      const OWNER_ID = process.env.OWNER_DISCORD_ID || '';
+
+      if (OWNER_ID && message.author.id !== OWNER_ID) {
+        await message.reply('❌ Apenas o Owner pode usar este comando.').catch(() => {});
+        return;
+      }
+
+      const args   = message.content.split(' ');
+      const limite = Math.min(parseInt(args[1]) || 100, 1000);
+
+      const aviso = await message.channel.send(`🗑️ Deletando até **${limite}** mensagens do bot neste privado...`).catch(() => null);
+
+      let deletadas = 0;
+      let antes = undefined;
+
+      while (deletadas < limite) {
+        const buscar = Math.min(limite - deletadas, 100);
+        const msgs = await message.channel.messages.fetch({ limit: buscar, ...(antes ? { before: antes } : {}) }).catch(() => null);
+        if (!msgs || msgs.size === 0) break;
+
+        const doBot = msgs.filter(m => m.author.id === message.client.user.id);
+        for (const [, m] of doBot) {
+          await m.delete().catch(() => {});
+          deletadas++;
+          await new Promise(r => setTimeout(r, 300)); // evitar rate limit
+        }
+
+        antes = msgs.last()?.id;
+        if (msgs.size < buscar) break;
+      }
+
+      // Deletar o próprio aviso e o comando do usuário
+      await aviso?.delete().catch(() => {});
+      await message.delete().catch(() => {});
+
+      const confirm = await message.channel.send(`✅ **${deletadas}** mensagem(ns) do bot deletada(s).`).catch(() => null);
+      setTimeout(() => confirm?.delete().catch(() => {}), 5000);
+      return;
+    }
+
     if (!message.guild) return;
 
     // Garantir perfil
