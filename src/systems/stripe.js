@@ -55,17 +55,17 @@ async function brlParaMoeda(valorBrl, moeda = 'USD') {
 }
 
 // ─── Métodos de pagamento por moeda ──────────────────────────────────────────
-// Baseado nos métodos habilitados na conta Stripe BR
+// Boleto só funciona em BRL no Stripe
 const METODOS_POR_MOEDA = {
-  // BRL — tratado separadamente via EFI PIX
-  USD: ['card', 'boleto'],
-  EUR: ['card', 'boleto'],
+  BRL: ['card', 'boleto'],
+  USD: ['card'],
+  EUR: ['card'],
   GBP: ['card'],
   CAD: ['card'],
   AUD: ['card'],
   JPY: ['card'],
   CHF: ['card'],
-  MXN: ['card', 'boleto'],
+  MXN: ['card'],
   ARS: ['card'],
   CLP: ['card'],
   COP: ['card'],

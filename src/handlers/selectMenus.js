@@ -83,11 +83,50 @@ module.exports = async (interaction, client) => {
       return gerarPixPedido(interaction, pedidoId, client);
     }
 
-    // Outras moedas → mostrar select de método de pagamento
+    // Outras moedas → mostrar select de método se tiver mais de 1 opção
     const { StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ActionRowBuilder, EmbedBuilder } = require('discord.js');
     const { MOEDAS, METODOS_POR_MOEDA, GRUPOS_METODO } = require('../systems/stripe');
     const info    = MOEDAS[moeda];
     const metodos = METODOS_POR_MOEDA[moeda] || ['card'];
+
+    // Se só tem cartão, vai direto pro checkout sem mostrar select
+    if (metodos.length === 1 && metodos[0] === 'card') {
+      await interaction.deferReply({ flags: 64 });
+      try {
+        const stripe  = require('../systems/stripe');
+        const produto = Produtos.get(pedido.produto_id);
+        const checkout = await stripe.criarCheckout({
+          valorBrl:  pedido.valor_total,
+          descricao: `Máximo Store — ${produto?.nome || 'Produto'}`,
+          pedidoId,
+          moeda,
+          metodo:    null, // automático
+        });
+        db.prepare("UPDATE pedidos SET tx_id=?, metodo_pag=? WHERE id=?")
+          .run(`ST_${checkout.sessionId}`, `stripe_${moeda.toLowerCase()}`, pedidoId);
+        const { ButtonBuilder, ButtonStyle } = require('discord.js');
+        const rowPag = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setLabel(`💳 Pagar ${info.simbolo}${checkout.valorMoeda} (${moeda})`).setStyle(ButtonStyle.Link).setURL(checkout.linkPagar),
+          new ButtonBuilder().setCustomId(`verificar_stripe_${pedidoId}`).setLabel('🔄 Verificar').setStyle(ButtonStyle.Primary),
+        );
+        return interaction.editReply({
+          embeds: [new EmbedBuilder()
+            .setColor(0x635BFF)
+            .setTitle(`${info.emoji} Pagamento em ${info.nome} (${moeda})`)
+            .setDescription('> Clique abaixo para pagar. Apple Pay e Google Pay disponíveis na página.')
+            .addFields(
+              { name: `${info.emoji} Valor`, value: `**${info.simbolo}${checkout.valorMoeda}**`, inline: true },
+              { name: '🇧🇷 Valor BRL',        value: `R$ ${Number(pedido.valor_total).toFixed(2)}`, inline: true },
+            )
+            .setTimestamp()
+            .setFooter({ text: 'Máximo Store • Stripe' })],
+          components: [rowPag],
+        });
+      } catch (err) {
+        console.error('[Stripe Checkout]', err.message);
+        return interaction.editReply({ content: `❌ Erro: \`${err.message.slice(0, 100)}\`` });
+      }
+    }
 
     // Sempre inclui "automático" como primeira opção
     const opcoes = [
