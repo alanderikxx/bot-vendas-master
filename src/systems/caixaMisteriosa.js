@@ -199,12 +199,20 @@ async function iniciarCompraCaixa(interaction, caixaId, client) {
   const coinsNec   = Math.ceil(caixa.preco / 0.01);
   const podeCoins  = coins >= coinsNec;
 
-  // Criar pedido pendente
+  // Criar pedido pendente — usa produto_id da própria caixa como referência
+  // Garante que exista um produto "placeholder" para caixas no banco
+  const produtoCaixaId = `caixa_${caixaId}`;
+  const prodExiste = db.prepare('SELECT id FROM produtos WHERE id=?').get(produtoCaixaId);
+  if (!prodExiste) {
+    db.prepare("INSERT OR IGNORE INTO produtos (id,nome,descricao,preco,tipo,ativo,criado_por) VALUES (?,?,?,?,?,1,'sistema')")
+      .run(produtoCaixaId, `🎁 ${caixa.nome}`, caixa.descricao || 'Caixa Misteriosa', caixa.preco, 'caixa');
+  }
+
   const pedidoId = uuidv4();
   db.prepare(`
     INSERT INTO pedidos (id, usuario_id, produto_id, quantidade, valor_unit, valor_total, desconto, metodo_pag, nota_fiscal, status)
-    VALUES (?, ?, 'CAIXA', 1, ?, ?, 0, 'pix', ?, 'pendente')
-  `).run(pedidoId, interaction.user.id, caixa.preco, caixa.preco, JSON.stringify({ tipo: 'caixa', caixaId }));
+    VALUES (?, ?, ?, 1, ?, ?, 0, 'pix', ?, 'pendente')
+  `).run(pedidoId, interaction.user.id, produtoCaixaId, caixa.preco, caixa.preco, JSON.stringify({ tipo: 'caixa', caixaId }));
 
   // Abrir ticket igual ao carrinho
   const { abrirTicket } = require('./tickets');
