@@ -58,7 +58,7 @@ async function brlParaMoeda(valorBrl, moeda = 'USD') {
 // Cada moeda tem métodos nativos além do cartão
 const METODOS_POR_MOEDA = {
   BRL: ['boleto', 'pix'],
-  EUR: ['card', 'ideal', 'sepa_debit', 'bancontact', 'eps', 'giropay', 'klarna', 'sofort'],
+  EUR: ['card', 'multibanco', 'mb_way', 'ideal', 'sepa_debit', 'bancontact', 'eps', 'giropay', 'klarna', 'sofort'],
   GBP: ['card', 'bacs_debit', 'klarna'],
   USD: ['card', 'us_bank_account', 'afterpay_clearpay', 'affirm', 'klarna'],
   CAD: ['card', 'afterpay_clearpay'],
@@ -79,6 +79,8 @@ const GRUPOS_METODO = {
   card:             { label: '💳 Cartão de Crédito/Débito', emoji: '💳' },
   boleto:           { label: '🧾 Boleto Bancário',          emoji: '🧾' },
   pix:              { label: '💠 PIX (Stripe)',              emoji: '💠' },
+  multibanco:       { label: '🇵🇹 Multibanco (Portugal)',    emoji: '🇵🇹' },
+  mb_way:           { label: '🇵🇹 MB WAY (Portugal)',        emoji: '🇵🇹' },
   ideal:            { label: '🏦 iDEAL (Holanda)',           emoji: '🏦' },
   sepa_debit:       { label: '🇪🇺 SEPA Débito',              emoji: '🇪🇺' },
   bancontact:       { label: '🇧🇪 Bancontact (Bélgica)',      emoji: '🇧🇪' },
