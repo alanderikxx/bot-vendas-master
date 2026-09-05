@@ -9,21 +9,42 @@ const axios = require('axios');
 const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
 
 const MOEDAS = {
-  USD: { nome: 'Dólar Americano',  emoji: '🇺🇸', simbolo: '$'  },
-  EUR: { nome: 'Euro',             emoji: '🇪🇺', simbolo: '€'  },
-  GBP: { nome: 'Libra Esterlina',  emoji: '🇬🇧', simbolo: '£'  },
-  CAD: { nome: 'Dólar Canadense',  emoji: '🇨🇦', simbolo: 'CA$'},
+  USD: { nome: 'Dólar Americano',   emoji: '🇺🇸', simbolo: '$'   },
+  EUR: { nome: 'Euro',              emoji: '🇪🇺', simbolo: '€'   },
+  GBP: { nome: 'Libra Esterlina',   emoji: '🇬🇧', simbolo: '£'   },
+  CAD: { nome: 'Dólar Canadense',   emoji: '🇨🇦', simbolo: 'CA$' },
+  AUD: { nome: 'Dólar Australiano', emoji: '🇦🇺', simbolo: 'A$'  },
+  JPY: { nome: 'Iene Japonês',      emoji: '🇯🇵', simbolo: '¥'   },
+  CHF: { nome: 'Franco Suíço',      emoji: '🇨🇭', simbolo: 'CHF' },
+  MXN: { nome: 'Peso Mexicano',     emoji: '🇲🇽', simbolo: '$'   },
+  ARS: { nome: 'Peso Argentino',    emoji: '🇦🇷', simbolo: '$'   },
+  CLP: { nome: 'Peso Chileno',      emoji: '🇨🇱', simbolo: '$'   },
+  COP: { nome: 'Peso Colombiano',   emoji: '🇨🇴', simbolo: '$'   },
+  PEN: { nome: 'Sol Peruano',       emoji: '🇵🇪', simbolo: 'S/.' },
+  NOK: { nome: 'Coroa Norueguesa',  emoji: '🇳🇴', simbolo: 'kr'  },
+  SEK: { nome: 'Coroa Sueca',       emoji: '🇸🇪', simbolo: 'kr'  },
+  DKK: { nome: 'Coroa Dinamarquesa',emoji: '🇩🇰', simbolo: 'kr'  },
+  NZD: { nome: 'Dólar Neozelandês', emoji: '🇳🇿', simbolo: 'NZ$' },
+  SGD: { nome: 'Dólar Singapura',   emoji: '🇸🇬', simbolo: 'S$'  },
+  HKD: { nome: 'Dólar Hong Kong',   emoji: '🇭🇰', simbolo: 'HK$' },
+  PLN: { nome: 'Zloty Polonês',     emoji: '🇵🇱', simbolo: 'zł'  },
 };
 
 // ─── Converter BRL para moeda destino com taxa de 50% ─────────────────────────
 async function brlParaMoeda(valorBrl, moeda = 'USD') {
+  const FALLBACK = {
+    USD: 0.20, EUR: 0.18, GBP: 0.16, CAD: 0.27,
+    AUD: 0.30, JPY: 29.0, CHF: 0.17, MXN: 3.40,
+    ARS: 195.0, CLP: 195.0, COP: 820.0, PEN: 0.74,
+    NOK: 2.10, SEK: 2.10, DKK: 1.35, NZD: 0.33,
+    SGD: 0.27, HKD: 1.56, PLN: 0.79,
+  };
   try {
-    const res  = await axios.get(`https://api.exchangerate-api.com/v4/latest/BRL`).catch(() => null);
-    const taxa = res?.data?.rates?.[moeda] || { USD:0.20, EUR:0.18, GBP:0.16, CAD:0.27 }[moeda] || 0.20;
+    const res  = await axios.get('https://api.exchangerate-api.com/v4/latest/BRL').catch(() => null);
+    const taxa = res?.data?.rates?.[moeda] || FALLBACK[moeda] || 0.20;
     return Number((valorBrl * taxa * 1.50).toFixed(2));
   } catch {
-    const fallback = { USD:0.20, EUR:0.18, GBP:0.16, CAD:0.27 };
-    return Number((valorBrl * (fallback[moeda] || 0.20) * 1.50).toFixed(2));
+    return Number((valorBrl * (FALLBACK[moeda] || 0.20) * 1.50).toFixed(2));
   }
 }
 
