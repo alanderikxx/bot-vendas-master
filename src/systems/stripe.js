@@ -28,6 +28,11 @@ const MOEDAS = {
   SGD: { nome: 'Dólar Singapura',   emoji: '🇸🇬', simbolo: 'S$'  },
   HKD: { nome: 'Dólar Hong Kong',   emoji: '🇭🇰', simbolo: 'HK$' },
   PLN: { nome: 'Zloty Polonês',     emoji: '🇵🇱', simbolo: 'zł'  },
+  INR: { nome: 'Rupia Indiana',     emoji: '🇮🇳', simbolo: '₹'   },
+  TRY: { nome: 'Lira Turca',        emoji: '🇹🇷', simbolo: '₺'   },
+  ZAR: { nome: 'Rand Sul-africano', emoji: '🇿🇦', simbolo: 'R'   },
+  IDR: { nome: 'Rupia Indonésia',   emoji: '🇮🇩', simbolo: 'Rp'  },
+  PHP: { nome: 'Peso Filipino',     emoji: '🇵🇭', simbolo: '₱'   },
 };
 
 // ─── Converter BRL para moeda destino com taxa de 50% ─────────────────────────
@@ -38,6 +43,7 @@ async function brlParaMoeda(valorBrl, moeda = 'USD') {
     ARS: 195.0, CLP: 195.0, COP: 820.0, PEN: 0.74,
     NOK: 2.10, SEK: 2.10, DKK: 1.35, NZD: 0.33,
     SGD: 0.27, HKD: 1.56, PLN: 0.79,
+    INR: 16.5, TRY: 6.40, ZAR: 3.70, IDR: 3200.0, PHP: 11.0,
   };
   try {
     const res  = await axios.get('https://api.exchangerate-api.com/v4/latest/BRL').catch(() => null);
