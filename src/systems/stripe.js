@@ -125,25 +125,51 @@ async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD', met
   if (metodo && metodo !== 'auto') {
     // Método específico escolhido pelo usuário
     params.append('payment_method_types[]', metodo);
-    // Boleto precisa de dados de CPF — usar allow_redirects
+    // Card sempre como fallback junto (exceto métodos que não combinam)
+    const semCard = ['boleto', 'oxxo', 'konbini', 'multibanco', 'mb_way', 'blik', 'p24', 'ideal', 'bancontact', 'eps', 'giropay', 'sofort'];
+    if (!semCard.includes(metodo)) {
+      params.append('payment_method_types[]', 'card');
+    }
     if (metodo === 'boleto') {
       params.set('payment_method_options[boleto][expires_after_days]', '3');
     }
   } else {
-    // Automático — Stripe mostra todos os disponíveis para a moeda/país
+    // Automático — Stripe mostra todos os métodos disponíveis para a moeda/país
     params.append('automatic_payment_methods[enabled]', 'true');
     params.append('automatic_payment_methods[allow_redirects]', 'always');
   }
 
-  const res = await axios.post(
-    'https://api.stripe.com/v1/checkout/sessions',
-    params.toString(),
-    { headers: { Authorization: `Bearer ${STRIPE_SECRET}`, 'Content-Type': 'application/x-www-form-urlencoded' } }
-  );
+  let resData;
+  try {
+    const res = await axios.post(
+      'https://api.stripe.com/v1/checkout/sessions',
+      params.toString(),
+      { headers: { Authorization: `Bearer ${STRIPE_SECRET}`, 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
+    resData = res.data;
+  } catch (err) {
+    // Log detalhado do erro Stripe para diagnóstico
+    const stripeErr = err.response?.data?.error;
+    console.error('[Stripe] Erro detalhado:', JSON.stringify(stripeErr || err.message));
+    // Fallback: se método específico falhou, tenta com card
+    if (metodo && metodo !== 'auto' && metodo !== 'card') {
+      console.log('[Stripe] Tentando fallback para card...');
+      params.delete('payment_method_types[]');
+      params.append('payment_method_types[]', 'card');
+      const res2 = await axios.post(
+        'https://api.stripe.com/v1/checkout/sessions',
+        params.toString(),
+        { headers: { Authorization: `Bearer ${STRIPE_SECRET}`, 'Content-Type': 'application/x-www-form-urlencoded' } }
+      );
+      resData = res2.data;
+    } else {
+      throw err;
+    }
+  }
 
   return {
-    sessionId:  res.data.id,
-    linkPagar:  res.data.url,
+    sessionId:  resData.id,
+    linkPagar:  resData.url,
     valorMoeda,
     moeda,
     valorBrl,
