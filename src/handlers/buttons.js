@@ -248,7 +248,7 @@ module.exports = async (interaction, client) => {
         new StringSelectMenuOptionBuilder()
           .setValue(code)
           .setLabel(`${info.emoji} ${info.nome} (${code})`)
-          .setDescription(`${info.simbolo} • Cartão via Stripe`),
+          .setDescription(`${info.simbolo} • Stripe — cartão, wallet, boleto e mais`),
       );
     }
 

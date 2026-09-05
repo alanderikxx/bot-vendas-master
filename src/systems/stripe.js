@@ -54,8 +54,53 @@ async function brlParaMoeda(valorBrl, moeda = 'USD') {
   }
 }
 
+// ─── Métodos de pagamento por moeda ──────────────────────────────────────────
+// Cada moeda tem métodos nativos além do cartão
+const METODOS_POR_MOEDA = {
+  BRL: ['boleto', 'pix'],
+  EUR: ['card', 'ideal', 'sepa_debit', 'bancontact', 'eps', 'giropay', 'klarna', 'sofort'],
+  GBP: ['card', 'bacs_debit', 'klarna'],
+  USD: ['card', 'us_bank_account', 'afterpay_clearpay', 'affirm', 'klarna'],
+  CAD: ['card', 'afterpay_clearpay'],
+  AUD: ['card', 'afterpay_clearpay'],
+  JPY: ['card', 'konbini'],
+  MXN: ['card', 'oxxo'],
+  PLN: ['card', 'blik', 'p24'],
+  NOK: ['card', 'klarna'],
+  SEK: ['card', 'klarna'],
+  DKK: ['card', 'klarna'],
+  SGD: ['card', 'paynow'],
+  HKD: ['card', 'alipay', 'wechat_pay'],
+  CNY: ['card', 'alipay', 'wechat_pay'],
+};
+
+// Grupos de métodos para o select menu (o que mostrar pro usuário)
+const GRUPOS_METODO = {
+  card:             { label: '💳 Cartão de Crédito/Débito', emoji: '💳' },
+  boleto:           { label: '🧾 Boleto Bancário',          emoji: '🧾' },
+  pix:              { label: '💠 PIX (Stripe)',              emoji: '💠' },
+  ideal:            { label: '🏦 iDEAL (Holanda)',           emoji: '🏦' },
+  sepa_debit:       { label: '🇪🇺 SEPA Débito',              emoji: '🇪🇺' },
+  bancontact:       { label: '🇧🇪 Bancontact (Bélgica)',      emoji: '🇧🇪' },
+  blik:             { label: '🇵🇱 BLIK (Polônia)',            emoji: '🇵🇱' },
+  p24:              { label: '🇵🇱 Przelewy24 (Polônia)',      emoji: '🇵🇱' },
+  eps:              { label: '🇦🇹 EPS (Áustria)',             emoji: '🇦🇹' },
+  giropay:          { label: '🇩🇪 Giropay (Alemanha)',        emoji: '🇩🇪' },
+  klarna:           { label: '🛍️ Klarna (Pague Depois)',     emoji: '🛍️' },
+  afterpay_clearpay:{ label: '🛍️ Afterpay/Clearpay',        emoji: '🛍️' },
+  affirm:           { label: '🛍️ Affirm (EUA)',              emoji: '🛍️' },
+  oxxo:             { label: '🏪 OXXO (México)',              emoji: '🏪' },
+  konbini:          { label: '🏪 Konbini (Japão)',            emoji: '🏪' },
+  us_bank_account:  { label: '🏦 ACH (Débito EUA)',           emoji: '🏦' },
+  bacs_debit:       { label: '🏦 Bacs Débito (UK)',           emoji: '🏦' },
+  alipay:           { label: '📱 Alipay',                    emoji: '📱' },
+  wechat_pay:       { label: '📱 WeChat Pay',                 emoji: '📱' },
+  paynow:           { label: '📱 PayNow (Singapura)',         emoji: '📱' },
+  sofort:           { label: '🏦 Sofort (Europa)',            emoji: '🏦' },
+};
+
 // ─── Criar Checkout Session ───────────────────────────────────────────────────
-async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD' }) {
+async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD', metodo = null }) {
   if (!STRIPE_SECRET) throw new Error('STRIPE_SECRET_KEY não configurado');
 
   const valorMoeda = await brlParaMoeda(valorBrl, moeda);
@@ -63,7 +108,6 @@ async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD' }) {
   const base       = process.env.WEBHOOK_URL?.replace('/webhook', '') || 'https://bot-vendas-master-production.up.railway.app';
 
   const params = new URLSearchParams({
-    'payment_method_types[]':                        'card',
     'line_items[0][price_data][currency]':           moeda.toLowerCase(),
     'line_items[0][price_data][product_data][name]': descricao || 'Máximo Store',
     'line_items[0][price_data][unit_amount]':        String(valorCents),
@@ -73,7 +117,21 @@ async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD' }) {
     'cancel_url':                                    `${base}/stripe/cancelar`,
     'metadata[pedido_id]':                           pedidoId,
     'metadata[moeda]':                               moeda,
+    'metadata[metodo]':                              metodo || 'auto',
   });
+
+  if (metodo && metodo !== 'auto') {
+    // Método específico escolhido pelo usuário
+    params.append('payment_method_types[]', metodo);
+    // Boleto precisa de dados de CPF — usar allow_redirects
+    if (metodo === 'boleto') {
+      params.set('payment_method_options[boleto][expires_after_days]', '3');
+    }
+  } else {
+    // Automático — Stripe mostra todos os disponíveis para a moeda/país
+    params.append('automatic_payment_methods[enabled]', 'true');
+    params.append('automatic_payment_methods[allow_redirects]', 'always');
+  }
 
   const res = await axios.post(
     'https://api.stripe.com/v1/checkout/sessions',
@@ -87,6 +145,7 @@ async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD' }) {
     valorMoeda,
     moeda,
     valorBrl,
+    metodo:     metodo || 'auto',
   };
 }
 
@@ -117,4 +176,4 @@ function verificarWebhook(payload, signature) {
   return JSON.parse(payload);
 }
 
-module.exports = { brlParaMoeda, criarCheckout, consultarSessao, verificarWebhook, MOEDAS };
+module.exports = { brlParaMoeda, criarCheckout, consultarSessao, verificarWebhook, MOEDAS, METODOS_POR_MOEDA, GRUPOS_METODO };

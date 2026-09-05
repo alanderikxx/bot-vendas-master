@@ -71,7 +71,7 @@ module.exports = async (interaction, client) => {
   // ── Selecionar moeda de pagamento ────────────────────────────────────────────
   if (id.startsWith('moeda_select_')) {
     const pedidoId = id.replace('moeda_select_', '');
-    const moeda    = interaction.values[0]; // 'BRL' | 'USD' | 'EUR' | 'GBP' | 'CAD'
+    const moeda    = interaction.values[0];
 
     const pedido = Pedidos.get(pedidoId);
     if (!pedido) return interaction.reply({ content: '❌ Pedido não encontrado.', ephemeral: true });
@@ -83,11 +83,69 @@ module.exports = async (interaction, client) => {
       return gerarPixPedido(interaction, pedidoId, client);
     }
 
-    // Outras moedas → Stripe Checkout
+    // Outras moedas → mostrar select de método de pagamento
+    const { StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ActionRowBuilder, EmbedBuilder } = require('discord.js');
+    const { MOEDAS, METODOS_POR_MOEDA, GRUPOS_METODO } = require('../systems/stripe');
+    const info    = MOEDAS[moeda];
+    const metodos = METODOS_POR_MOEDA[moeda] || ['card'];
+
+    // Sempre inclui "automático" como primeira opção
+    const opcoes = [
+      new StringSelectMenuOptionBuilder()
+        .setValue('auto')
+        .setLabel('⚡ Automático (recomendado)')
+        .setDescription('Stripe escolhe os melhores métodos para você'),
+    ];
+
+    for (const m of metodos) {
+      const g = GRUPOS_METODO[m];
+      if (!g) continue;
+      opcoes.push(
+        new StringSelectMenuOptionBuilder()
+          .setValue(m)
+          .setLabel(g.label)
+          .setDescription(`Pagar em ${info.simbolo} (${moeda})`),
+      );
+    }
+
+    const selectRow = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`metodo_select_${moeda}_${pedidoId}`)
+        .setPlaceholder('Escolha o método de pagamento...')
+        .addOptions(opcoes.slice(0, 25)),
+    );
+
+    return interaction.update({
+      embeds: [new EmbedBuilder()
+        .setColor(0x635BFF)
+        .setTitle(`${info.emoji} Método de Pagamento — ${info.nome} (${moeda})`)
+        .setDescription([
+          `> Escolha como deseja pagar em **${info.nome}**.`,
+          `> **Automático** mostra todos os métodos disponíveis na página de pagamento.`,
+          '',
+          `💵 **Valor BRL:** R$ ${Number(pedido.valor_total).toFixed(2)}`,
+        ].join('\n'))
+        .setFooter({ text: 'Máximo Store • Stripe' })],
+      components: [selectRow],
+    });
+  }
+
+  // ── Selecionar método de pagamento (após moeda) ───────────────────────────
+  if (id.startsWith('metodo_select_')) {
+    const partes   = id.replace('metodo_select_', '').split('_');
+    const moeda    = partes[0];
+    const pedidoId = partes.slice(1).join('_');
+    const metodo   = interaction.values[0]; // 'auto' | 'card' | 'boleto' | etc.
+
+    const pedido = Pedidos.get(pedidoId);
+    if (!pedido) return interaction.reply({ content: '❌ Pedido não encontrado.', ephemeral: true });
+    if (pedido.status !== 'pendente') return interaction.reply({ content: `⚠️ Pedido já: **${pedido.status}**`, ephemeral: true });
+
     await interaction.deferReply({ flags: 64 });
     try {
       const stripe  = require('../systems/stripe');
-      const { MOEDAS } = stripe;
+      const { MOEDAS, GRUPOS_METODO } = stripe;
+      const info    = MOEDAS[moeda];
       const produto = Produtos.get(pedido.produto_id);
 
       const checkout = await stripe.criarCheckout({
@@ -95,17 +153,19 @@ module.exports = async (interaction, client) => {
         descricao: `Máximo Store — ${produto?.nome || 'Produto'}`,
         pedidoId,
         moeda,
+        metodo: metodo === 'auto' ? null : metodo,
       });
 
       db.prepare("UPDATE pedidos SET tx_id=?, metodo_pag=? WHERE id=?")
-        .run(`ST_${checkout.sessionId}`, `stripe_${moeda.toLowerCase()}`, pedidoId);
+        .run(`ST_${checkout.sessionId}`, `stripe_${moeda.toLowerCase()}_${metodo}`, pedidoId);
 
-      const info = MOEDAS[moeda];
       const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+      const metodoInfo  = GRUPOS_METODO[metodo] || { label: 'Automático', emoji: '⚡' };
+      const metodoLabel = metodo === 'auto' ? '⚡ Automático' : metodoInfo.label;
 
       const rowPag = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setLabel(`💳 Pagar ${info.simbolo}${checkout.valorMoeda} (${moeda})`)
+          .setLabel(`${metodoInfo.emoji || '💳'} Pagar ${info.simbolo}${checkout.valorMoeda}`)
           .setStyle(ButtonStyle.Link)
           .setURL(checkout.linkPagar),
         new ButtonBuilder()
@@ -117,15 +177,15 @@ module.exports = async (interaction, client) => {
       return interaction.editReply({
         embeds: [new EmbedBuilder()
           .setColor(0x635BFF)
-          .setTitle(`💳 Pagamento em ${info.nome} (${moeda})`)
+          .setTitle(`${info.emoji} Pagamento em ${info.nome} (${moeda})`)
           .setDescription([
-            `> Clique no botão abaixo para pagar com cartão de crédito.`,
-            `> Após o pagamento, clique em **🔄 Verificar Pagamento**.`,
+            `> Clique no botão abaixo para concluir o pagamento.`,
+            `> Após pagar, clique em **🔄 Verificar Pagamento**.`,
           ].join('\n'))
           .addFields(
-            { name: `${info.emoji} Valor ${moeda}`, value: `**${info.simbolo}${checkout.valorMoeda}**`, inline: true },
-            { name: '🇧🇷 Valor BRL',                 value: `R$ ${Number(pedido.valor_total).toFixed(2)}`, inline: true },
-            { name: '⚙️ Processado por',              value: '**Stripe** • Seguro e criptografado', inline: true },
+            { name: `${info.emoji} Valor`,    value: `**${info.simbolo}${checkout.valorMoeda}**`,           inline: true },
+            { name: '🇧🇷 Valor BRL',           value: `R$ ${Number(pedido.valor_total).toFixed(2)}`,         inline: true },
+            { name: '💳 Método',               value: metodoLabel,                                           inline: true },
           )
           .setTimestamp()
           .setFooter({ text: 'Máximo Store • Pagamento seguro via Stripe' })],
