@@ -111,26 +111,12 @@ async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD', met
     'metadata[metodo]':                              metodo || 'auto',
   });
 
-  if (metodo && metodo !== 'auto') {
-    // Boleto só funciona em BRL — se passar boleto em outra moeda, usa automático
-    if (metodo === 'boleto' && moeda !== 'BRL') {
-      params.append('automatic_payment_methods[enabled]', 'true');
-      params.append('automatic_payment_methods[allow_redirects]', 'always');
-    } else if (metodo === 'card') {
-      // 'card' como payment_method_types não é mais aceito — usar automático
-      params.append('automatic_payment_methods[enabled]', 'true');
-      params.append('automatic_payment_methods[allow_redirects]', 'always');
-    } else {
-      params.append('payment_method_types[]', metodo);
-      if (metodo === 'boleto') {
-        params.set('payment_method_options[boleto][expires_after_days]', '3');
-      }
-    }
-  } else {
-    // Automático — Stripe exibe cartão + Apple Pay + Google Pay + Link + Boleto
-    params.append('automatic_payment_methods[enabled]', 'true');
-    params.append('automatic_payment_methods[allow_redirects]', 'always');
+  if (metodo === 'boleto' && moeda === 'BRL') {
+    params.append('payment_method_types[]', 'boleto');
+    params.set('payment_method_options[boleto][expires_after_days]', '3');
   }
+  // Para todos os outros casos não passa payment_method_types
+  // O Stripe usa automaticamente os métodos habilitados na conta (cartão, Apple Pay, Google Pay, Link)
 
   let resData;
   try {
