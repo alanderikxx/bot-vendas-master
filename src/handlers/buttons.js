@@ -234,16 +234,14 @@ module.exports = async (interaction, client) => {
       new StringSelectMenuOptionBuilder()
         .setValue('BRL')
         .setLabel('🇧🇷 Real Brasileiro (BRL) — PIX')
-        .setDescription('Pagar via PIX instantâneo')
-        .setEmoji('💠'),
+        .setDescription('💠 Pagar via PIX instantâneo'),
     ];
     for (const [code, info] of Object.entries(MOEDAS)) {
       opcoes.push(
         new StringSelectMenuOptionBuilder()
           .setValue(code)
-          .setLabel(`${info.emoji} ${info.nome} (${code}) — Cartão`)
-          .setDescription(`Pagar em ${info.simbolo} via Stripe`)
-          .setEmoji('💳'),
+          .setLabel(`${info.emoji} ${info.nome} (${code})`)
+          .setDescription(`${info.simbolo} • Cartão via Stripe`),
       );
     }
 
