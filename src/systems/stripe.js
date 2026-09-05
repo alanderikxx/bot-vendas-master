@@ -95,13 +95,15 @@ async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD', met
   if (!STRIPE_SECRET) throw new Error('STRIPE_SECRET_KEY não configurado');
 
   const valorMoeda = await brlParaMoeda(valorBrl, moeda);
-  const valorCents = Math.round(valorMoeda * 100);
-  const base       = process.env.WEBHOOK_URL?.replace('/webhook', '') || 'https://bot-vendas-master-production.up.railway.app';
+  // Moedas sem centavos (zero-decimal currencies no Stripe)
+  const ZERO_DECIMAL = ['JPY', 'KRW', 'CLP', 'BIF', 'DJF', 'GNF', 'ISK', 'KMF', 'MGA', 'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF'];
+  const valorUnidade = ZERO_DECIMAL.includes(moeda) ? Math.round(valorMoeda) : Math.round(valorMoeda * 100);
+  const base         = process.env.WEBHOOK_URL?.replace('/webhook', '') || 'https://bot-vendas-master-production.up.railway.app';
 
   const params = new URLSearchParams({
     'line_items[0][price_data][currency]':           moeda.toLowerCase(),
     'line_items[0][price_data][product_data][name]': descricao || 'Máximo Store',
-    'line_items[0][price_data][unit_amount]':        String(valorCents),
+    'line_items[0][price_data][unit_amount]':        String(valorUnidade),
     'line_items[0][quantity]':                       '1',
     'mode':                                          'payment',
     'success_url':                                   `${base}/stripe/sucesso?session_id={CHECKOUT_SESSION_ID}&pedido=${pedidoId}`,
@@ -120,6 +122,7 @@ async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD', met
 
   let resData;
   try {
+    console.log(`[Stripe] Criando checkout — moeda:${moeda} valor:${valorUnidade} metodo:${metodo||'auto'}`);
     const res = await axios.post(
       'https://api.stripe.com/v1/checkout/sessions',
       params.toString(),
