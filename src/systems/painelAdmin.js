@@ -97,19 +97,25 @@ async function buildHome(member) {
 
   // Row 1 — Controles rápidos
   rows.push(new ActionRowBuilder().addComponents(
-    btn('pa_toggle_manut', manutencao ? '✅ Sair Manutenção' : '🔧 Manutenção', manutencao ? ButtonStyle.Success : ButtonStyle.Danger),
-    btn('pa_atualizar',    '🔄 Atualizar',  ButtonStyle.Primary),
-    btn('pa_relatorio',    '📊 Relatório',  ButtonStyle.Secondary),
-    btn('pa_estoque_baixo','📉 Estoque',    ButtonStyle.Secondary),
+    btn('pa_toggle_manut',  manutencao ? '✅ Sair Manutenção' : '🔧 Manutenção', manutencao ? ButtonStyle.Success : ButtonStyle.Danger),
+    btn('pa_toggle_loja',   (lojaAberta === false || lojaAberta === '0') ? '🟢 Abrir Loja' : '🔴 Fechar Loja', (lojaAberta === false || lojaAberta === '0') ? ButtonStyle.Success : ButtonStyle.Danger),
+    btn('pa_atualizar',     '🔄 Atualizar',  ButtonStyle.Primary),
+    btn('pa_relatorio',     '📊 Relatório',  ButtonStyle.Secondary),
+    btn('pa_estoque_baixo', '📉 Estoque',    ButtonStyle.Secondary),
   ));
 
   // Row 2 — Submenus
   rows.push(new ActionRowBuilder().addComponents(
-    btn('pa_menu_loja',      '🛒 Loja',       ButtonStyle.Success),
-    btn('pa_menu_operacoes', '⚙️ Operações',  ButtonStyle.Primary),
-    btn('pa_menu_usuarios',  '👥 Usuários',   ButtonStyle.Secondary),
-    btn('pa_menu_caixa',     '🎁 Caixas',     ButtonStyle.Secondary),
-    btn('pa_menu_config',    '🔧 Config',     ButtonStyle.Secondary),
+    btn('pa_menu_loja',      '🛒 Loja',        ButtonStyle.Success),
+    btn('pa_menu_operacoes', '⚙️ Operações',   ButtonStyle.Primary),
+    btn('pa_menu_usuarios',  '👥 Usuários',    ButtonStyle.Secondary),
+    btn('pa_menu_caixa',     '🎁 Caixas',      ButtonStyle.Secondary),
+    btn('pa_menu_afiliados', '🤝 Afiliados',   ButtonStyle.Secondary),
+  ));
+
+  // Row 3 — Config
+  rows.push(new ActionRowBuilder().addComponents(
+    btn('pa_menu_config',    '🔧 Config',      ButtonStyle.Secondary),
   ));
 
   return { embed, components: rows };
@@ -222,7 +228,9 @@ function buildOperacoesMenu() {
   );
 
   const row4 = new ActionRowBuilder().addComponents(
-    btn('pa_home', '🔙 Voltar', ButtonStyle.Secondary),
+    btn('pa_filtrar_pedidos', '🔎 Filtrar Pedidos',  ButtonStyle.Secondary),
+    btn('pa_ver_entrega',     '📄 Ver Entrega',      ButtonStyle.Secondary),
+    btn('pa_home',            '🔙 Voltar',           ButtonStyle.Secondary),
   );
 
   return { embed, components: [row1, row2, row3, row4] };
@@ -306,35 +314,75 @@ function buildCaixaMenu() {
 
 // ─── Menu Config (Owner) ─────────────────────────────────────────────────────
 function buildConfigMenu() {
-  const nomeLoja    = Config.get('nome_loja')       || 'Máximo Store';
-  const metaDia     = Config.get('meta_dia')        || '0';
-  const cashback    = Config.get('cashback_pct')    || '5';
-  const canalVendas = Config.get('canal_vendas_id') ? `<#${Config.get('canal_vendas_id')}>` : '❌ Não definido';
+  const nomeLoja    = Config.get('nome_loja')        || 'Máximo Store';
+  const metaDia     = Config.get('meta_dia')         || '0';
+  const cashback    = Config.get('cashback_pct')     || '5';
+  const canalVendas = Config.get('canal_vendas_id')  ? `<#${Config.get('canal_vendas_id')}>` : '❌ Não definido';
+  const canalCupons = Config.get('canal_cupons_id')  ? `<#${Config.get('canal_cupons_id')}>` : '⚠️ Fixo no código';
 
   const embed = new EmbedBuilder()
     .setColor(0x5865F2)
     .setTitle('🔧 Painel — Configurações')
     .setDescription('> Ajuste as configurações gerais da loja.')
     .addFields(
-      { name: '🏪 Nome da loja',    value: `**${nomeLoja}**`,                      inline: true },
-      { name: '🎯 Meta diária',     value: `**R$ ${Number(metaDia).toFixed(2)}**`, inline: true },
-      { name: '🪙 Cashback %',      value: `**${cashback}%**`,                     inline: true },
-      { name: '📢 Canal de vendas', value: canalVendas,                            inline: true },
+      { name: '🏪 Nome da loja',     value: `**${nomeLoja}**`,                       inline: true },
+      { name: '🎯 Meta diária',      value: `**R$ ${Number(metaDia).toFixed(2)}**`,  inline: true },
+      { name: '🪙 Cashback %',       value: `**${cashback}%**`,                      inline: true },
+      { name: '📢 Canal de vendas',  value: canalVendas,                             inline: true },
+      { name: '🎟️ Canal de cupons',  value: canalCupons,                             inline: true },
     )
     .setFooter({ text: 'Máximo Store • Configurações' })
     .setTimestamp();
 
   const row1 = new ActionRowBuilder().addComponents(
-    btn('pa_cfg_nome',         '🏪 Nome Loja',     ButtonStyle.Primary),
-    btn('pa_cfg_meta',         '🎯 Meta Diária',   ButtonStyle.Primary),
-    btn('pa_cfg_cashback',     '🪙 Cashback',      ButtonStyle.Secondary),
-    btn('pa_cfg_boas_vindas',  '👋 Boas-vindas',   ButtonStyle.Secondary),
-    btn('pa_cfg_canal_vendas', '📢 Canal Vendas',  ButtonStyle.Secondary),
+    btn('pa_cfg_nome',         '🏪 Nome Loja',      ButtonStyle.Primary),
+    btn('pa_cfg_meta',         '🎯 Meta Diária',    ButtonStyle.Primary),
+    btn('pa_cfg_cashback',     '🪙 Cashback',       ButtonStyle.Secondary),
+    btn('pa_cfg_boas_vindas',  '👋 Boas-vindas',    ButtonStyle.Secondary),
+    btn('pa_cfg_canal_vendas', '📢 Canal Vendas',   ButtonStyle.Secondary),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_zerar_historico', '🗑️ Zerar Histórico', ButtonStyle.Danger),
-    btn('pa_home',            '🔙 Voltar',           ButtonStyle.Secondary),
+    btn('pa_cfg_canal_cupons', '🎟️ Canal Cupons',   ButtonStyle.Secondary),
+    btn('pa_zerar_historico',  '🗑️ Zerar Histórico', ButtonStyle.Danger),
+    btn('pa_home',             '🔙 Voltar',          ButtonStyle.Secondary),
+  );
+
+  return { embed, components: [row1, row2] };
+}
+
+// ─── Menu Afiliados (Admin+) ──────────────────────────────────────────────────
+function buildAfiliadosMenu() {
+  const totalAfil  = db.prepare("SELECT COUNT(*) as c FROM usuarios WHERE codigo_afil IS NOT NULL").get().c;
+  const comissPend = db.prepare("SELECT COALESCE(SUM(saldo),0) as t FROM usuarios WHERE saldo > 0").get().t;
+  const vendasAfil = db.prepare("SELECT COUNT(*) as c, COALESCE(SUM(comissao_afil),0) as t FROM pedidos WHERE afiliado_id IS NOT NULL AND status IN ('pago','entregue')").get();
+  const saquesPend = db.prepare("SELECT COUNT(*) as c FROM reembolsos WHERE status='pendente' AND tipo='saque_afiliado'").get()?.c || 0;
+
+  const embed = new EmbedBuilder()
+    .setColor(0x9B59B6)
+    .setTitle('🤝 Painel — Afiliados')
+    .setDescription('> Gerencie o programa de afiliados, comissões e saques.')
+    .addFields(
+      { name: '👥 Afiliados',          value: `**${totalAfil}**`,                                            inline: true },
+      { name: '💰 Saldo a pagar',      value: `**R$ ${Number(comissPend).toFixed(2)}**`,                     inline: true },
+      { name: '🛒 Vendas c/ afiliado', value: `**${vendasAfil.c}** • R$ ${Number(vendasAfil.t).toFixed(2)}`, inline: true },
+      { name: '💸 Saques pendentes',   value: saquesPend > 0 ? `⚠️ **${saquesPend}**` : '✅ Nenhum',        inline: true },
+    )
+    .setFooter({ text: 'Máximo Store • Afiliados' })
+    .setTimestamp();
+
+  const row1 = new ActionRowBuilder().addComponents(
+    btn('pa_afil_top',           '🏆 Top Afiliados',    ButtonStyle.Primary),
+    btn('pa_afil_saques',        '💸 Ver Saques',       saquesPend > 0 ? ButtonStyle.Danger : ButtonStyle.Secondary),
+    btn('pa_afil_pagar_saque',   '✅ Pagar Saque',      ButtonStyle.Success),
+    btn('pa_afil_rejeitar_saque','❌ Rejeitar Saque',   ButtonStyle.Danger),
+    btn('pa_afil_buscar',        '🔍 Buscar',           ButtonStyle.Secondary),
+  );
+
+  const row2 = new ActionRowBuilder().addComponents(
+    btn('pa_afil_cfg_comissao',  '⚙️ % Comissão',      ButtonStyle.Secondary),
+    btn('pa_afil_cfg_min_saque', '⚙️ Mín. Saque',      ButtonStyle.Secondary),
+    btn('pa_home',               '🔙 Voltar',           ButtonStyle.Secondary),
   );
 
   return { embed, components: [row1, row2] };
@@ -418,6 +466,11 @@ async function handlePainelAdmin(interaction, client) {
     const { embed, components } = buildConfigMenu();
     return interaction.update({ embeds: [embed], components });
   }
+  if (id === 'pa_menu_afiliados') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const { embed, components } = buildAfiliadosMenu();
+    return interaction.update({ embeds: [embed], components });
+  }
   // Aliases antigos para não quebrar nada
   if (id === 'pa_menu_carrinho') {
     if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja+.', ephemeral: true });
@@ -478,6 +531,139 @@ async function handlePainelAdmin(interaction, client) {
     modal.addComponents(
       mRow(new TextInputBuilder().setCustomId('canal_id').setLabel('ID do canal (0 para desativar)').setStyle(TextInputStyle.Short).setRequired(true)
         .setPlaceholder('Ex: 1234567890').setValue(Config.get('canal_vendas_id') || '')),
+    );
+    return interaction.showModal(modal);
+  }
+
+  if (id === 'pa_cfg_canal_cupons') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_cfg_canal_cupons').setTitle('🎟️ Canal de Publicação de Cupons');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('canal_id').setLabel('ID do canal (0 para desativar)').setStyle(TextInputStyle.Short).setRequired(true)
+        .setPlaceholder('Ex: 1234567890').setValue(Config.get('canal_cupons_id') || '')),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ── Handlers de afiliados ─────────────────────────────────────────────────
+  if (id === 'pa_afil_top') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const top = db.prepare(`
+      SELECT u.nome, u.discord_id, u.saldo, u.codigo_afil,
+        COUNT(p.id) as vendas, COALESCE(SUM(p.comissao_afil),0) as total_comissao,
+        (SELECT COUNT(*) FROM usuarios WHERE afiliado_de=u.discord_id) as indicados
+      FROM usuarios u
+      LEFT JOIN pedidos p ON p.afiliado_id=u.discord_id AND p.status IN ('pago','entregue')
+      WHERE u.codigo_afil IS NOT NULL
+      GROUP BY u.discord_id ORDER BY total_comissao DESC LIMIT 10
+    `).all();
+    if (!top.length) return interaction.editReply({ content: '📊 Nenhum afiliado com vendas ainda.' });
+    const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
+    const embed  = new EmbedBuilder().setColor(0x9B59B6).setTitle('🏆 Top Afiliados por Comissão').setTimestamp();
+    top.forEach((u,i) => embed.addFields({
+      name:  `${medals[i]} ${u.nome || u.discord_id}`,
+      value: `💰 R$ ${Number(u.total_comissao).toFixed(2)} • ${u.vendas} venda(s) • 👥 ${u.indicados} indicado(s)\n🏦 Saldo: R$ ${Number(u.saldo||0).toFixed(2)} • Código: \`${u.codigo_afil}\``,
+      inline: false,
+    }));
+    return interaction.editReply({ embeds: [embed] });
+  }
+
+  if (id === 'pa_afil_saques') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const saques = db.prepare(`
+      SELECT u.discord_id, u.nome, u.saldo, u.codigo_afil,
+        COUNT(p.id) as vendas, COALESCE(SUM(p.comissao_afil),0) as total_comissao
+      FROM usuarios u
+      LEFT JOIN pedidos p ON p.afiliado_id=u.discord_id AND p.status IN ('pago','entregue')
+      WHERE u.saldo > 0
+      GROUP BY u.discord_id ORDER BY u.saldo DESC LIMIT 10
+    `).all();
+    if (!saques.length) return interaction.editReply({ content: '✅ Nenhum saldo pendente para pagar.' });
+    const embed = new EmbedBuilder().setColor(0x9B59B6).setTitle('💸 Afiliados com Saldo a Receber').setTimestamp();
+    for (const s of saques) {
+      embed.addFields({
+        name:  `💸 ${s.nome || s.discord_id}`,
+        value: `🏦 **R$ ${Number(s.saldo).toFixed(2)}** a receber • ${s.vendas} venda(s) gerada(s)\n\`${s.discord_id}\``,
+        inline: false,
+      });
+    }
+    const rowPagar = new ActionRowBuilder().addComponents(
+      btn('pa_afil_pagar_saque', '✅ Pagar Saque', ButtonStyle.Success),
+    );
+    return interaction.editReply({ embeds: [embed], components: [rowPagar] });
+  }
+
+  if (id === 'pa_afil_pagar_saque') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_afil_pagar_saque').setTitle('✅ Confirmar Pagamento de Saque');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('discord_id').setLabel('Discord ID do afiliado').setStyle(TextInputStyle.Short).setRequired(true)),
+      mRow(new TextInputBuilder().setCustomId('comprovante').setLabel('Comprovante / observação').setStyle(TextInputStyle.Paragraph).setRequired(false).setPlaceholder('Ex: PIX confirmado, chave: ...')),
+    );
+    return interaction.showModal(modal);
+  }
+
+  if (id === 'pa_afil_rejeitar_saque') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_afil_rejeitar_saque').setTitle('❌ Rejeitar Saque de Afiliado');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('discord_id').setLabel('Discord ID do afiliado').setStyle(TextInputStyle.Short).setRequired(true)),
+      mRow(new TextInputBuilder().setCustomId('motivo').setLabel('Motivo da rejeição').setStyle(TextInputStyle.Short).setRequired(true)),
+    );
+    return interaction.showModal(modal);
+  }
+
+  if (id === 'pa_afil_buscar') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_afil_buscar').setTitle('🔍 Buscar Afiliado');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('discord_id').setLabel('Discord ID ou código do afiliado').setStyle(TextInputStyle.Short).setRequired(true)),
+    );
+    return interaction.showModal(modal);
+  }
+
+  if (id === 'pa_afil_cfg_comissao') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const atual = Config.get('comissao_afil_pct') || '10';
+    const modal = new ModalBuilder().setCustomId('pam_afil_cfg_comissao').setTitle('⚙️ % de Comissão de Afiliados');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('pct').setLabel('Percentual de comissão por venda (%)').setStyle(TextInputStyle.Short).setRequired(true)
+        .setValue(String(atual)).setPlaceholder('Ex: 10')),
+    );
+    return interaction.showModal(modal);
+  }
+
+  if (id === 'pa_afil_cfg_min_saque') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const atual = Config.get('min_saque_afiliado') || '20';
+    const modal = new ModalBuilder().setCustomId('pam_afil_cfg_min_saque').setTitle('⚙️ Mínimo para Saque');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('valor').setLabel('Valor mínimo em R$ para solicitar saque').setStyle(TextInputStyle.Short).setRequired(true)
+        .setValue(String(atual)).setPlaceholder('Ex: 20.00')),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ── Ver entrega de um pedido ──────────────────────────────────────────────
+  if (id === 'pa_ver_entrega') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_ver_entrega').setTitle('🔍 Ver Conteúdo Entregue');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('pedido_id').setLabel('ID do Pedido (primeiros 8 chars)').setStyle(TextInputStyle.Short).setRequired(true)),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ── Filtrar pedidos ───────────────────────────────────────────────────────
+  if (id === 'pa_filtrar_pedidos') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_filtrar_pedidos').setTitle('🔎 Filtrar Pedidos');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('discord_id').setLabel('Discord ID do usuário (vazio = todos)').setStyle(TextInputStyle.Short).setRequired(false)),
+      mRow(new TextInputBuilder().setCustomId('status').setLabel('Status: pago, entregue, pendente, cancelado').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Vazio = todos')),
+      mRow(new TextInputBuilder().setCustomId('dias').setLabel('Últimos X dias (vazio = todos)').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Ex: 7')),
     );
     return interaction.showModal(modal);
   }
@@ -562,9 +748,13 @@ async function handlePainelAdmin(interaction, client) {
     for (const p of falhos) {
       embed.addFields({ name: `📦 ${p.pnome}`, value: `<@${p.usuario_id}> • R$ ${Number(p.valor_total).toFixed(2)} • \`${p.id.slice(0,8)}\``, inline: false });
     }
-    const rows = falhos.slice(0,3).map(p => new ActionRowBuilder().addComponents(
-      btn(`pa_forcar_entrega_${p.id}`, `📦 Entregar ${p.id.slice(0,6)}`, ButtonStyle.Success),
-    ));
+    // Botão para cada pedido (até 5 por row × 5 rows = 25, mas Discord permite 5 rows por mensagem)
+    const rows = [];
+    for (let i = 0; i < Math.min(falhos.length, 5); i++) {
+      rows.push(new ActionRowBuilder().addComponents(
+        btn(`pa_forcar_entrega_${falhos[i].id}`, `📦 ${falhos[i].pnome.slice(0,20)} — ${falhos[i].id.slice(0,6)}`, ButtonStyle.Success),
+      ));
+    }
     return interaction.editReply({ embeds: [embed], components: rows });
   }
 
@@ -1184,8 +1374,41 @@ async function handlePainelAdmin(interaction, client) {
     const ticks = db.prepare("SELECT * FROM tickets WHERE status='aberto' ORDER BY criado_em ASC LIMIT 10").all();
     if (!ticks.length) return interaction.editReply({ content: '✅ Nenhum ticket aberto.' });
     const embed = new EmbedBuilder().setColor(config.colors.primary).setTitle('🎫 Tickets Abertos').setTimestamp();
-    for (const t of ticks) embed.addFields({ name: `🎫 ${t.tipo.toUpperCase()}`, value: `<@${t.usuario_id}> • <#${t.canal_id}>${t.atendente ? ` • ✋ <@${t.atendente}>` : ''}`, inline: false });
-    return interaction.editReply({ embeds: [embed] });
+    const tipoEmoji = { compra:'🛒', suporte:'🆘', reembolso:'↩️', entrega:'📦', afiliado:'🤝', reclamacao:'⚠️', saque:'💸' };
+    for (const t of ticks) {
+      const aberto = t.criado_em ? `<t:${t.criado_em}:R>` : '—';
+      embed.addFields({
+        name:  `${tipoEmoji[t.tipo]||'🎫'} ${t.tipo.toUpperCase()} — \`${t.id.slice(0,8)}\``,
+        value: `<@${t.usuario_id}> • <#${t.canal_id}>${t.atendente ? ` • ✋ <@${t.atendente}>` : ' • *sem atendente*'}\nAberto: ${aberto}`,
+        inline: false,
+      });
+    }
+    // Botão fechar individual para cada ticket (até 5)
+    const rowsTickets = [];
+    for (let i = 0; i < Math.min(ticks.length, 5); i++) {
+      const t = ticks[i];
+      rowsTickets.push(new ActionRowBuilder().addComponents(
+        btn(`pa_fechar_ticket_${t.id}`, `🔒 Fechar: ${t.tipo} — ${t.id.slice(0,6)}`, ButtonStyle.Danger),
+      ));
+    }
+    return interaction.editReply({ embeds: [embed], components: rowsTickets });
+  }
+
+  if (id.startsWith('pa_fechar_ticket_')) {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const ticketId = id.replace('pa_fechar_ticket_', '');
+    const { Tickets } = require('../database/database');
+    const ticket = Tickets.get(ticketId) || db.prepare('SELECT * FROM tickets WHERE id=?').get(ticketId);
+    if (!ticket) return interaction.editReply({ content: '❌ Ticket não encontrado.' });
+    db.prepare("UPDATE tickets SET status='fechado', motivo='Fechado pelo admin via painel', fechado_por=?, fechado_em=strftime('%s','now') WHERE id=?")
+      .run(interaction.user.id, ticketId);
+    try {
+      const canal = interaction.guild.channels.cache.get(ticket.canal_id);
+      if (canal) await canal.delete().catch(() => {});
+    } catch {}
+    _statsCache = null;
+    return interaction.editReply({ content: `✅ Ticket \`${ticketId.slice(0,8)}\` fechado e canal deletado.` });
   }
 
   if (id === 'pa_pendentes') {
@@ -1430,9 +1653,9 @@ async function handlePainelAdmin(interaction, client) {
     const c = db.prepare('SELECT * FROM cupons WHERE id=?').get(cupomId);
     if (!c) return interaction.editReply({ content: '❌ Cupom não encontrado.' });
 
-    const CANAL_CUPONS = '1530039474082283610';
+    const CANAL_CUPONS = Config.get('canal_cupons_id') || '1530039474082283610';
     const canal = interaction.guild.channels.cache.get(CANAL_CUPONS);
-    if (!canal) return interaction.editReply({ content: '❌ Canal de cupons não encontrado.' });
+    if (!canal) return interaction.editReply({ content: '❌ Canal de cupons não encontrado. Configure em **🔧 Config → 🎟️ Canal Cupons**.' });
 
     const dataValidade = c.validade ? new Date(c.validade * 1000).toLocaleDateString('pt-BR') : '∞';
     const lojasLabel   = (() => {
@@ -2074,11 +2297,19 @@ async function handlePainelAdminModals(interaction, client) {
 
     const { addCoins, COIN_EMOJI } = require('./coins');
     const usuarios = db.prepare('SELECT discord_id FROM usuarios').all();
-    let count = 0;
-    for (const u of usuarios) {
-      try { addCoins(u.discord_id, qtd, motivo); count++; } catch {}
+    let count = 0, erros = 0;
+    // Processar em chunks de 50 para não travar
+    const CHUNK = 50;
+    for (let i = 0; i < usuarios.length; i += CHUNK) {
+      const chunk = usuarios.slice(i, i + CHUNK);
+      for (const u of chunk) {
+        try { addCoins(u.discord_id, qtd, motivo); count++; } catch { erros++; }
+      }
+      // Pequena pausa entre chunks se base for grande
+      if (i + CHUNK < usuarios.length) await new Promise(r => setTimeout(r, 50));
     }
-    return interaction.editReply({ content: `✅ **${qtd} ${COIN_EMOJI}** adicionados para **${count}** usuários!\n**Motivo:** ${motivo}` });
+    _statsCache = null;
+    return interaction.editReply({ content: `✅ **${qtd} ${COIN_EMOJI}** adicionados para **${count}** usuário(s)!\n${erros > 0 ? `⚠️ ${erros} falha(s).` : ''}\n**Motivo:** ${motivo}` });
   }
 
   // ─── Enviar produto manualmente (modal) ──────────────────────────────────
@@ -2158,6 +2389,178 @@ async function handlePainelAdminModals(interaction, client) {
     if (!canal) return interaction.editReply({ content: `❌ Canal \`${canalId}\` não encontrado.` });
     db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('canal_vendas_id',?,'string')").run(canalId);
     return interaction.editReply({ content: `✅ Feed de vendas configurado para <#${canalId}>.` });
+  }
+
+  if (id === 'pam_cfg_canal_cupons') {
+    await interaction.deferReply({ ephemeral: true });
+    const canalId = interaction.fields.getTextInputValue('canal_id').trim();
+    if (canalId === '0' || canalId === '') {
+      db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('canal_cupons_id','','string')").run();
+      return interaction.editReply({ content: '✅ Canal de cupons desativado.' });
+    }
+    const canal = interaction.guild.channels.cache.get(canalId);
+    if (!canal) return interaction.editReply({ content: `❌ Canal \`${canalId}\` não encontrado.` });
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('canal_cupons_id',?,'string')").run(canalId);
+    return interaction.editReply({ content: `✅ Canal de cupons configurado para <#${canalId}>.` });
+  }
+
+  // ─── Afiliados modais ─────────────────────────────────────────────────────
+  if (id === 'pam_afil_pagar_saque') {
+    await interaction.deferReply({ ephemeral: true });
+    const discordId   = interaction.fields.getTextInputValue('discord_id').trim();
+    const comprovante = interaction.fields.getTextInputValue('comprovante').trim();
+    const u = db.prepare('SELECT * FROM usuarios WHERE discord_id=?').get(discordId);
+    if (!u) return interaction.editReply({ content: '❌ Usuário não encontrado.' });
+    if (!u.saldo || u.saldo <= 0) return interaction.editReply({ content: '⚠️ Usuário sem saldo a receber.' });
+    const valorPago = u.saldo;
+    db.prepare('UPDATE usuarios SET saldo=0 WHERE discord_id=?').run(discordId);
+    // Notificar afiliado
+    try {
+      const membro = await interaction.guild.members.fetch(discordId).catch(() => null);
+      if (membro) {
+        await membro.send({ embeds: [new EmbedBuilder()
+          .setColor(config.colors.success)
+          .setTitle('💸 Saque de Afiliado Aprovado!')
+          .setDescription([
+            `> Seu saque de **R$ ${Number(valorPago).toFixed(2)}** foi aprovado e pago!`,
+            comprovante ? `> 📄 ${comprovante}` : '',
+          ].filter(Boolean).join('\n'))
+          .setTimestamp()
+          .setFooter({ text: 'Máximo Store • Programa de Afiliados' }),
+        ] }).catch(() => {});
+      }
+    } catch {}
+    const { log } = require('../utils/logger');
+    await log('sistema', { executor: interaction.user.id, usuario: discordId, descricao: `💸 Saque afiliado pago: R$ ${Number(valorPago).toFixed(2)} para <@${discordId}>` });
+    return interaction.editReply({ content: `✅ Saque de **R$ ${Number(valorPago).toFixed(2)}** marcado como pago para <@${discordId}>. Saldo zerado.` });
+  }
+
+  if (id === 'pam_afil_rejeitar_saque') {
+    await interaction.deferReply({ ephemeral: true });
+    const discordId = interaction.fields.getTextInputValue('discord_id').trim();
+    const motivo    = interaction.fields.getTextInputValue('motivo').trim();
+    const u = db.prepare('SELECT * FROM usuarios WHERE discord_id=?').get(discordId);
+    if (!u) return interaction.editReply({ content: '❌ Usuário não encontrado.' });
+    try {
+      const membro = await interaction.guild.members.fetch(discordId).catch(() => null);
+      if (membro) {
+        await membro.send({ embeds: [new EmbedBuilder()
+          .setColor(config.colors.error)
+          .setTitle('❌ Saque Rejeitado')
+          .setDescription(`> Seu saque foi rejeitado.\n> **Motivo:** ${motivo}`)
+          .setTimestamp()
+          .setFooter({ text: 'Máximo Store • Programa de Afiliados' }),
+        ] }).catch(() => {});
+      }
+    } catch {}
+    return interaction.editReply({ content: `✅ Saque de <@${discordId}> rejeitado. Saldo mantido. Usuário notificado.` });
+  }
+
+  if (id === 'pam_afil_buscar') {
+    await interaction.deferReply({ ephemeral: true });
+    const busca = interaction.fields.getTextInputValue('discord_id').trim();
+    const u = db.prepare('SELECT * FROM usuarios WHERE discord_id=? OR codigo_afil=?').get(busca, busca.toUpperCase());
+    if (!u) return interaction.editReply({ content: '❌ Afiliado não encontrado.' });
+    const vendas = db.prepare("SELECT COUNT(*) as c, COALESCE(SUM(comissao_afil),0) as t FROM pedidos WHERE afiliado_id=? AND status IN ('pago','entregue')").get(u.discord_id);
+    const indicados = db.prepare('SELECT COUNT(*) as c FROM usuarios WHERE afiliado_de=?').get(u.discord_id).c;
+    const embed = new EmbedBuilder()
+      .setColor(0x9B59B6)
+      .setTitle(`🤝 Afiliado — ${u.nome || u.discord_id}`)
+      .addFields(
+        { name: '🔑 Código',        value: `\`${u.codigo_afil || '—'}\``,                       inline: true },
+        { name: '💰 Saldo atual',   value: `R$ ${Number(u.saldo||0).toFixed(2)}`,                inline: true },
+        { name: '👥 Indicados',     value: `**${indicados}**`,                                   inline: true },
+        { name: '🛒 Vendas geradas',value: `**${vendas.c}**`,                                    inline: true },
+        { name: '💵 Total comissão',value: `R$ ${Number(vendas.t).toFixed(2)}`,                  inline: true },
+        { name: '🆔 Discord ID',    value: `\`${u.discord_id}\``,                               inline: true },
+      )
+      .setTimestamp();
+    const rowAcoes = new ActionRowBuilder().addComponents(
+      btn('pa_afil_pagar_saque',    '✅ Pagar Saque',   ButtonStyle.Success),
+      btn('pa_afil_rejeitar_saque', '❌ Rejeitar',      ButtonStyle.Danger),
+      btn(`pa_bloquear_${u.discord_id}`, u.bloqueado ? '✅ Desbloquear' : '🚫 Bloquear', u.bloqueado ? ButtonStyle.Success : ButtonStyle.Danger),
+    );
+    return interaction.editReply({ embeds: [embed], components: [rowAcoes] });
+  }
+
+  if (id === 'pam_afil_cfg_comissao') {
+    await interaction.deferReply({ ephemeral: true });
+    const pct = parseFloat(interaction.fields.getTextInputValue('pct').trim());
+    if (isNaN(pct) || pct < 0 || pct > 100) return interaction.editReply({ content: '❌ Valor entre 0 e 100.' });
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('comissao_afil_pct',?,'string')").run(String(pct));
+    return interaction.editReply({ content: `✅ Comissão de afiliados definida em **${pct}%** por venda.` });
+  }
+
+  if (id === 'pam_afil_cfg_min_saque') {
+    await interaction.deferReply({ ephemeral: true });
+    const valor = parseFloat(interaction.fields.getTextInputValue('valor').trim().replace(',','.'));
+    if (isNaN(valor) || valor < 0) return interaction.editReply({ content: '❌ Valor inválido.' });
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('min_saque_afiliado',?,'string')").run(String(valor));
+    return interaction.editReply({ content: `✅ Mínimo para saque definido em **R$ ${valor.toFixed(2)}**.` });
+  }
+
+  // ─── Ver conteúdo entregue de um pedido ──────────────────────────────────
+  if (id === 'pam_ver_entrega') {
+    await interaction.deferReply({ ephemeral: true });
+    const busca  = interaction.fields.getTextInputValue('pedido_id').trim();
+    const pedido = db.prepare("SELECT p.*, pr.nome as pnome, u.nome as unome FROM pedidos p JOIN produtos pr ON p.produto_id=pr.id LEFT JOIN usuarios u ON p.usuario_id=u.discord_id WHERE UPPER(SUBSTR(p.id,1,8))=UPPER(?) OR p.id LIKE ?").get(busca, `${busca}%`);
+    if (!pedido) return interaction.editReply({ content: `❌ Pedido \`${busca}\` não encontrado.` });
+    const conteudo = pedido.conteudo_entregue || '_Nenhum conteúdo registrado._';
+    const embed = new EmbedBuilder()
+      .setColor(pedido.status === 'entregue' ? config.colors.success : config.colors.warning)
+      .setTitle(`📄 Conteúdo Entregue — \`${pedido.id.slice(0,8).toUpperCase()}\``)
+      .addFields(
+        { name: '📦 Produto',   value: pedido.pnome,                                             inline: true },
+        { name: '👤 Cliente',   value: `<@${pedido.usuario_id}>`,                                inline: true },
+        { name: '📊 Status',    value: pedido.status.toUpperCase(),                              inline: true },
+        { name: '💵 Valor',     value: `R$ ${Number(pedido.valor_total).toFixed(2)}`,            inline: true },
+        { name: '🗓️ Entregue',  value: pedido.entregue_em ? `<t:${pedido.entregue_em}:f>` : '—',inline: true },
+        { name: '💳 Método',    value: pedido.metodo_pag?.toUpperCase() || '—',                 inline: true },
+      )
+      .setTimestamp();
+    if (conteudo.length <= 1000) {
+      embed.addFields({ name: '🎁 Conteúdo', value: `\`\`\`\n${conteudo}\n\`\`\`` });
+    } else {
+      embed.addFields({ name: '🎁 Conteúdo', value: `\`\`\`\n${conteudo.slice(0, 900)}...\n\`\`\`` });
+      embed.setFooter({ text: `Conteúdo truncado — total: ${conteudo.length} chars` });
+    }
+    const rowAcao = new ActionRowBuilder().addComponents(
+      btn(`pa_forcar_entrega_${pedido.id}`, '🔄 Reenviar', ButtonStyle.Primary),
+    );
+    return interaction.editReply({ embeds: [embed], components: [rowAcao] });
+  }
+
+  // ─── Filtrar pedidos ──────────────────────────────────────────────────────
+  if (id === 'pam_filtrar_pedidos') {
+    await interaction.deferReply({ ephemeral: true });
+    const discordId = interaction.fields.getTextInputValue('discord_id').trim();
+    const status    = interaction.fields.getTextInputValue('status').trim().toLowerCase();
+    const dias      = parseInt(interaction.fields.getTextInputValue('dias').trim()) || 0;
+
+    let where = 'WHERE 1=1';
+    const params = [];
+    if (discordId) { where += ' AND p.usuario_id=?'; params.push(discordId); }
+    if (status && ['pago','entregue','pendente','cancelado'].includes(status)) { where += ' AND p.status=?'; params.push(status); }
+    if (dias > 0) { where += ' AND p.criado_em >= ?'; params.push(Math.floor(Date.now()/1000) - dias*86400); }
+
+    const pedidos = db.prepare(`SELECT p.*, pr.nome as pnome FROM pedidos p JOIN produtos pr ON p.produto_id=pr.id ${where} ORDER BY p.criado_em DESC LIMIT 15`).all(...params);
+    if (!pedidos.length) return interaction.editReply({ content: '🔎 Nenhum pedido encontrado com esses filtros.' });
+
+    const statusEmoji = { pago:'✅', entregue:'📦', pendente:'⏳', cancelado:'❌' };
+    const embed = new EmbedBuilder()
+      .setColor(config.colors.info)
+      .setTitle(`🔎 Pedidos Filtrados (${pedidos.length})`)
+      .setDescription(discordId ? `Usuário: <@${discordId}>` : dias > 0 ? `Últimos **${dias}** dias` : `Status: **${status || 'todos'}**`)
+      .setTimestamp();
+    for (const p of pedidos) {
+      const data = p.criado_em ? new Date(p.criado_em*1000).toLocaleDateString('pt-BR') : '—';
+      embed.addFields({
+        name:  `${statusEmoji[p.status]||'•'} ${p.pnome.slice(0,30)} — \`${p.id.slice(0,8)}\``,
+        value: `<@${p.usuario_id}> • R$ ${Number(p.valor_total).toFixed(2)} • ${data}`,
+        inline: false,
+      });
+    }
+    return interaction.editReply({ embeds: [embed] });
   }
 
   // ─── Reenviar produto ─────────────────────────────────────────────────────
@@ -2266,27 +2669,35 @@ async function handlePainelAdminModals(interaction, client) {
     const dias       = parseInt(interaction.fields.getTextInputValue('dias').trim());
     if (isNaN(vendasDia)||isNaN(ticketMed)||isNaN(dias)) return interaction.editReply({ content: '❌ Valores inválidos.' });
 
-    const receitaBruta  = vendasDia * ticketMed * dias;
-    const taxaStripe    = receitaBruta * 0.029 + (vendasDia * dias * 0.30); // 2.9% + $0.30/transação
-    const receitaLiquid = receitaBruta - taxaStripe;
-    const projecao7     = vendasDia * ticketMed * 7;
-    const projecao30    = vendasDia * ticketMed * 30;
+    const receitaBruta   = vendasDia * ticketMed * dias;
+
+    // Taxa Stripe: 4,99% + R$0,39 por transação (BRL)
+    const txStripe = receitaBruta * 0.0499 + (vendasDia * dias * 0.39);
+    // Taxa PIX EFI: 0,99% por transação (sem taxa fixa)
+    const txPix    = receitaBruta * 0.0099;
+    // Estimativa 50% PIX / 50% Stripe
+    const txMedia  = (txStripe + txPix) / 2;
+
+    const liqStripe = receitaBruta - txStripe;
+    const liqPix    = receitaBruta - txPix;
+    const liqMedia  = receitaBruta - txMedia;
 
     const embed = new EmbedBuilder()
       .setColor(0x00D4AA)
       .setTitle('💡 Simulador de Receita')
       .addFields(
-        { name: '📅 Período simulado',  value: `**${dias}** dias`,                                        inline: true },
-        { name: '🛒 Vendas/dia',        value: `**${vendasDia}**`,                                         inline: true },
-        { name: '💵 Ticket médio',      value: `**R$ ${ticketMed.toFixed(2)}**`,                           inline: true },
-        { name: '💰 Receita bruta',     value: `**R$ ${receitaBruta.toFixed(2)}**`,                        inline: true },
-        { name: '💳 Taxa Stripe (est.)',value: `**R$ ${taxaStripe.toFixed(2)}**`,                          inline: true },
-        { name: '✅ Receita líquida',   value: `**R$ ${receitaLiquid.toFixed(2)}**`,                       inline: true },
-        { name: '📈 Projeção 7 dias',   value: `R$ ${projecao7.toFixed(2)}`,                               inline: true },
-        { name: '📈 Projeção 30 dias',  value: `R$ ${projecao30.toFixed(2)}`,                              inline: true },
-        { name: '📈 Projeção anual',    value: `R$ ${(vendasDia * ticketMed * 365).toFixed(2)}`,           inline: true },
+        { name: '📅 Período',         value: `**${dias}** dias`,                                   inline: true },
+        { name: '🛒 Vendas/dia',      value: `**${vendasDia}**`,                                    inline: true },
+        { name: '💵 Ticket médio',    value: `**R$ ${ticketMed.toFixed(2)}**`,                      inline: true },
+        { name: '💰 Receita bruta',   value: `**R$ ${receitaBruta.toFixed(2)}**`,                   inline: false },
+        { name: '💠 Líquido c/ PIX',  value: `R$ ${liqPix.toFixed(2)}\n*(taxa EFI ~0,99%)*`,        inline: true },
+        { name: '💳 Líquido c/ Stripe',value:`R$ ${liqStripe.toFixed(2)}\n*(taxa ~4,99%+R$0,39)*`, inline: true },
+        { name: '📊 Líquido médio',   value: `**R$ ${liqMedia.toFixed(2)}**\n*(mix 50/50)*`,        inline: true },
+        { name: '📈 Proj. 7 dias',    value: `R$ ${(vendasDia * ticketMed * 7).toFixed(2)}`,        inline: true },
+        { name: '📈 Proj. 30 dias',   value: `R$ ${(vendasDia * ticketMed * 30).toFixed(2)}`,       inline: true },
+        { name: '📈 Proj. anual',     value: `**R$ ${(vendasDia * ticketMed * 365).toFixed(2)}**`,  inline: true },
       )
-      .setFooter({ text: 'Estimativa. Taxas Stripe variam. PIX não tem taxa.' })
+      .setFooter({ text: 'PIX via EFI Bank • Cartão via Stripe • Estimativas' })
       .setTimestamp();
     return interaction.editReply({ embeds: [embed] });
   }
