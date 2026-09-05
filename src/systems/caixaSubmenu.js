@@ -253,8 +253,9 @@ async function itemSelectCaixa(interaction) {
   const caixaId = interaction.values[0];
   const caixa   = db.prepare('SELECT * FROM caixa_config WHERE id=?').get(caixaId);
   set(interaction.user.id, 'item', { caixaId, caixaNome: caixa?.nome });
-  await interaction.deferUpdate().catch(() => {});
-  return rerenderItem(interaction);
+  await interaction.update({ content: `✅ Caixa **${caixa?.nome}** selecionada.`, components: [] }).catch(() => {});
+  const s = get(interaction.user.id, 'item');
+  if (s) await interaction.followUp({ embeds: [buildItemEmbed(s)], components: buildItemRows(s), ephemeral: true }).catch(() => {});
 }
 
 async function itemSelecionarVariante(interaction) {
@@ -280,32 +281,45 @@ async function itemSelectVariante(interaction) {
   const varianteId = interaction.values[0];
   const variante   = db.prepare('SELECT vp.*, pr.nome as p_nome FROM variantes_produto vp JOIN produtos pr ON vp.produto_id=pr.id WHERE vp.id=?').get(varianteId);
   set(interaction.user.id, 'item', { varianteId, varianteNome: variante ? `${variante.p_nome} — ${variante.nome}` : varianteId.slice(0,8) });
-  await interaction.deferUpdate().catch(() => {});
-  return rerenderItem(interaction);
+  await interaction.update({ content: `✅ Produto **${variante?.nome}** selecionado.`, components: [] }).catch(() => {});
+  const s = get(interaction.user.id, 'item');
+  if (s) await interaction.followUp({ embeds: [buildItemEmbed(s)], components: buildItemRows(s), ephemeral: true }).catch(() => {});
 }
 
 async function itemModalDados(interaction) {
   const s = get(interaction.user.id, 'item');
+  if (!s) return interaction.reply({ content: '❌ Sessão expirada. Clique em **🎯 Add Item** novamente.', ephemeral: true });
   const modal = new ModalBuilder().setCustomId('cxm_item_dados').setTitle('⚙️ Raridade e Chance');
   modal.addComponents(
     new ActionRowBuilder().addComponents(
-      new TextInputBuilder().setCustomId('raridade').setLabel('Raridade: comum / raro / epico / lendario').setStyle(TextInputStyle.Short).setRequired(true).setValue(s?.raridade || 'comum').setPlaceholder('comum'),
+      new TextInputBuilder().setCustomId('raridade')
+        .setLabel('Raridade: comum / raro / epico / lendario')
+        .setStyle(TextInputStyle.Short).setRequired(true)
+        .setValue(s?.raridade || 'comum').setPlaceholder('comum'),
     ),
     new ActionRowBuilder().addComponents(
-      new TextInputBuilder().setCustomId('chance').setLabel('Chance de drop (%) — soma de todos deve dar 100').setStyle(TextInputStyle.Short).setRequired(true).setValue(s?.chance ? String(s.chance) : '').setPlaceholder('Ex: 50'),
+      new TextInputBuilder().setCustomId('chance')
+        .setLabel('Chance de drop (%) — soma deve ser 100')
+        .setStyle(TextInputStyle.Short).setRequired(true)
+        .setValue(s?.chance ? String(s.chance) : '').setPlaceholder('Ex: 50'),
     ),
   );
   return interaction.showModal(modal);
 }
 
 async function itemProcessarDados(interaction) {
-  const raridade = interaction.fields.getTextInputValue('raridade').trim().toLowerCase();
+  const raridade  = interaction.fields.getTextInputValue('raridade').trim().toLowerCase();
   const chanceStr = interaction.fields.getTextInputValue('chance').trim();
-  const chance = parseFloat(chanceStr.replace(',', '.'));
-  if (!RARIDADES[raridade]) return interaction.reply({ content: '❌ Raridade inválida. Use: comum, raro, epico ou lendario', ephemeral: true });
-  if (isNaN(chance) || chance <= 0 || chance > 100) return interaction.reply({ content: '❌ Chance inválida (1-100).', ephemeral: true });
+  const chance    = parseFloat(chanceStr.replace(',', '.'));
+  if (!RARIDADES[raridade]) return interaction.reply({ content: '❌ Raridade inválida. Use: `comum`, `raro`, `epico` ou `lendario`', ephemeral: true });
+  if (isNaN(chance) || chance <= 0 || chance > 100) return interaction.reply({ content: '❌ Chance inválida. Use um número entre 1 e 100.', ephemeral: true });
+  const s = get(interaction.user.id, 'item');
+  if (!s) return interaction.reply({ content: '❌ Sessão expirada. Clique em **🎯 Add Item** novamente.', ephemeral: true });
   set(interaction.user.id, 'item', { raridade, chance });
-  return rerenderItem(interaction);
+  // Modal não tem interaction.update — precisa usar deferUpdate + editReply
+  await interaction.deferUpdate().catch(() => {});
+  const sAtual = get(interaction.user.id, 'item');
+  return interaction.editReply({ embeds: [buildItemEmbed(sAtual)], components: buildItemRows(sAtual) }).catch(() => {});
 }
 
 async function itemSalvar(interaction) {
