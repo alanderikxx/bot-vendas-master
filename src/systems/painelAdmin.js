@@ -1608,7 +1608,14 @@ async function handlePainelAdmin(interaction, client) {
 
   if (id === 'pa_ranking') {
     await interaction.deferReply({ ephemeral: true });
-    const top = db.prepare('SELECT * FROM usuarios ORDER BY total_gasto DESC LIMIT 10').all();
+    const ownerIds = [];
+    if (process.env.OWNER_DISCORD_ID) ownerIds.push(process.env.OWNER_DISCORD_ID);
+    try {
+      const cargoOwner = interaction.guild?.roles.cache.get(config.roles?.owner);
+      if (cargoOwner) cargoOwner.members.forEach(m => ownerIds.push(m.id));
+    } catch {}
+    const excluir = ownerIds.length ? `WHERE discord_id NOT IN (${ownerIds.map(() => '?').join(',')})` : '';
+    const top = db.prepare(`SELECT * FROM usuarios ${excluir} ORDER BY total_gasto DESC LIMIT 10`).all(...ownerIds);
     const embed = new EmbedBuilder().setColor(config.colors.gold).setTitle('🏆 Ranking — Maiores Compradores').setTimestamp();
     const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
     top.forEach((u,i) => embed.addFields({ name: `${medals[i]} ${u.nome||'?'}`, value: `R$ ${(u.total_gasto||0).toFixed(2)} • ${u.total_compras||0} compras`, inline: true }));

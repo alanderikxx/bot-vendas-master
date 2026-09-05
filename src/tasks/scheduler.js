@@ -184,13 +184,24 @@ module.exports = function iniciarScheduler(client) {
       const canal = guild.channels.cache.get(CANAL_KPI_COINS);
       if (!canal) return;
 
+      const ownerIds = (() => {
+        const ids = [];
+        if (process.env.OWNER_DISCORD_ID) ids.push(process.env.OWNER_DISCORD_ID);
+        // Também excluir quem tem cargo owner
+        try {
+          const cargoOwner = guild.roles.cache.get(require('../config').roles?.owner);
+          if (cargoOwner) cargoOwner.members.forEach(m => ids.push(m.id));
+        } catch {}
+        return ids;
+      })();
+
       const top = db.prepare(`
         SELECT nome, discord_id, coins
         FROM usuarios
         WHERE coins > 0
         ORDER BY coins DESC
         LIMIT 25
-      `).all();
+      `).all().filter(u => !ownerIds.includes(u.discord_id));
 
       const totalCoins    = Number(db.prepare("SELECT COALESCE(SUM(coins),0) as t FROM usuarios").get().t);
       const totalUsuarios = db.prepare("SELECT COUNT(*) as c FROM usuarios WHERE coins > 0").get().c;

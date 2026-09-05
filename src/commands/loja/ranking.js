@@ -21,17 +21,27 @@ module.exports = {
     await interaction.deferReply();
     const tipo = interaction.options.getString('tipo') || 'gasto';
 
+    // IDs a excluir do ranking (owner)
+    const ownerIds = [];
+    if (process.env.OWNER_DISCORD_ID) ownerIds.push(process.env.OWNER_DISCORD_ID);
+    try {
+      const cargoOwner = interaction.guild?.roles.cache.get(config.roles?.owner);
+      if (cargoOwner) cargoOwner.members.forEach(m => ownerIds.push(m.id));
+    } catch {}
+    const excluirClause = ownerIds.length
+      ? `AND discord_id NOT IN (${ownerIds.map(() => '?').join(',')})` : '';
+
     let usuarios, titulo, campo;
     if (tipo === 'gasto') {
-      usuarios = db.prepare('SELECT * FROM usuarios ORDER BY total_gasto DESC LIMIT 10').all();
+      usuarios = db.prepare(`SELECT * FROM usuarios WHERE 1=1 ${excluirClause} ORDER BY total_gasto DESC LIMIT 10`).all(...ownerIds);
       titulo = '💰 Top 10 — Maiores Compradores';
       campo = u => `R$ ${(u.total_gasto || 0).toFixed(2)} gastos`;
     } else if (tipo === 'compras') {
-      usuarios = db.prepare('SELECT * FROM usuarios ORDER BY total_compras DESC LIMIT 10').all();
+      usuarios = db.prepare(`SELECT * FROM usuarios WHERE 1=1 ${excluirClause} ORDER BY total_compras DESC LIMIT 10`).all(...ownerIds);
       titulo = '🛒 Top 10 — Mais Compras';
       campo = u => `${u.total_compras || 0} compras realizadas`;
     } else if (tipo === 'pontos') {
-      usuarios = db.prepare('SELECT * FROM usuarios ORDER BY pontos DESC LIMIT 10').all();
+      usuarios = db.prepare(`SELECT * FROM usuarios WHERE 1=1 ${excluirClause} ORDER BY pontos DESC LIMIT 10`).all(...ownerIds);
       titulo = '⭐ Top 10 — Pontos de Fidelidade';
       campo = u => `${u.pontos || 0} pontos — Nível ${u.nivel || 'Bronze'}`;
     } else {
@@ -41,10 +51,11 @@ module.exports = {
         FROM usuarios u
         LEFT JOIN usuarios i ON i.afiliado_de = u.discord_id
         LEFT JOIN pedidos p ON p.afiliado_id = u.discord_id
+        WHERE 1=1 ${excluirClause ? excluirClause.replace(/discord_id/g, 'u.discord_id') : ''}
         GROUP BY u.discord_id
         ORDER BY total_ganho DESC
         LIMIT 10
-      `).all();
+      `).all(...ownerIds);
       titulo = '🤝 Top 10 — Afiliados';
       campo = u => `${u.total_indicados || 0} indicados • R$ ${(u.total_ganho || 0).toFixed(2)} em comissões`;
     }
