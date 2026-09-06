@@ -286,9 +286,7 @@ module.exports = async (interaction, client) => {
     const txId = pedido.tx_id;
     if (!txId) return interaction.editReply({ content: '❌ Sem sessão de pagamento registrada.' });
 
-    // Suporta ST_ (Checkout Session), BT_ (Bank Transfer PaymentIntent)
-    const consultarId = txId.startsWith('BT_') ? txId.replace('BT_', '')
-                      : txId.replace('ST_', '');
+    const consultarId = txId.replace('ST_', '');
 
     try {
       const stripe = require('../systems/stripe');
@@ -300,10 +298,7 @@ module.exports = async (interaction, client) => {
         if (interaction.message) await interaction.message.delete().catch(() => {});
         return interaction.editReply({ content: '✅ Pagamento confirmado! Produto entregue no privado.' });
       }
-      const msgEspera = txId.startsWith('BT_')
-        ? '⏳ Transferência ainda não recebida. Pode levar alguns minutos após o envio.'
-        : '⏳ Pagamento não confirmado ainda. Complete o pagamento e tente novamente.';
-      return interaction.editReply({ content: msgEspera });
+      return interaction.editReply({ content: '⏳ Pagamento não confirmado ainda. Complete o pagamento e tente novamente.' });
     } catch (err) {
       console.error('[Stripe Verificar]', err.message);
       return interaction.editReply({ content: `❌ Erro: \`${err.message.slice(0,100)}\`` });
