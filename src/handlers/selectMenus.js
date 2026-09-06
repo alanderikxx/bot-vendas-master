@@ -152,8 +152,8 @@ module.exports = async (interaction, client) => {
           components: [rowPag],
         });
       } catch (err) {
-        console.error('[Stripe Checkout]', err.message);
-        return interaction.editReply({ content: `❌ Erro: \`${err.message.slice(0, 100)}\`` });
+        console.error('[Stripe Checkout] ERRO DETALHADO:', err.response?.data?.error?.message || err.response?.data || err.message);
+        return interaction.editReply({ content: `❌ Erro: \`${(err.response?.data?.error?.message || err.message).slice(0, 150)}\`` });
       }
     }
 
@@ -298,8 +298,8 @@ module.exports = async (interaction, client) => {
         components: [rowPag],
       });
     } catch (err) {
-      console.error('[Stripe Checkout]', err.message);
-      return interaction.editReply({ content: `❌ Erro ao gerar checkout: \`${err.message.slice(0, 100)}\`` });
+      console.error('[Stripe Checkout] ERRO DETALHADO:', err.response?.data?.error?.message || err.response?.data || err.message);
+      return interaction.editReply({ content: `❌ Erro ao gerar checkout: \`${(err.response?.data?.error?.message || err.message).slice(0, 150)}\`` });
     }
   }
 
