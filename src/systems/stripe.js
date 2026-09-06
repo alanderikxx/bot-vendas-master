@@ -123,7 +123,7 @@ async function criarCheckout({ valorBrl, descricao, pedidoId, moeda = 'USD', met
 
   let resData;
   try {
-    console.log(`[Stripe] Criando checkout — moeda:${moeda} valor:${valorUnidade} metodo:${metodo||'auto'}`);
+    console.error(`[Stripe DEBUG] moeda:${moeda} unidade:${valorUnidade} metodo:${metodo||'card(default)'}`);
     const res = await axios.post(
       'https://api.stripe.com/v1/checkout/sessions',
       params.toString(),
