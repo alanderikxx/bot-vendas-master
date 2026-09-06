@@ -167,8 +167,19 @@ async function iniciarCompra(interaction, produtoId, cupomCodigo = null) {
           `> Seu ticket foi criado em ${canal}.`,
           `> Escolha a forma de pagamento lá para finalizar a compra.`,
         ].join('\n'))
+        .addFields(
+          { name: '📦 Produto', value: produto.nome,                                inline: true },
+          { name: '💵 Valor',   value: `R$ ${precoFinal.toFixed(2)}`,               inline: true },
+          { name: '🆔 Pedido',  value: `\`${pedidoId.slice(0,8).toUpperCase()}\``, inline: true },
+        )
         .setTimestamp()
         .setFooter({ text: 'Máximo Store • Ticket de Compra' })],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel('🎫 Ir para o Ticket')
+          .setStyle(ButtonStyle.Link)
+          .setURL(`https://discord.com/channels/${interaction.guild?.id}/${canal.id}`),
+      )],
     });
   } else {
     // Fallback sem ticket
@@ -436,8 +447,19 @@ async function iniciarCompraVariante(interaction, varianteId, client, cupomCodig
           `> Seu ticket foi criado em ${canal}.`,
           `> Escolha a forma de pagamento lá para finalizar a compra.`,
         ].join('\n'))
+        .addFields(
+          { name: '📦 Produto', value: produto.nome,                                inline: true },
+          { name: '💵 Valor',   value: `R$ ${precoFinal.toFixed(2)}`,               inline: true },
+          { name: '🆔 Pedido',  value: `\`${pedidoId.slice(0,8).toUpperCase()}\``, inline: true },
+        )
         .setTimestamp()
         .setFooter({ text: 'Máximo Store • Ticket de Compra' })],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel('🎫 Ir para o Ticket')
+          .setStyle(ButtonStyle.Link)
+          .setURL(`https://discord.com/channels/${interaction.guild?.id}/${canal.id}`),
+      )],
     });
   } else {
     const rowPag = new ActionRowBuilder().addComponents(

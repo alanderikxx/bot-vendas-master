@@ -53,6 +53,9 @@ const GRUPOS_METODO = {
 
 // ─── Converter BRL → moeda com taxa 50% ──────────────────────────────────────
 async function brlParaMoeda(valorBrl, moeda = 'USD') {
+  // BRL para BRL — sem conversão, sem taxa
+  if (moeda === 'BRL') return Number(valorBrl.toFixed(2));
+
   const FALLBACK = {
     USD: 0.20, EUR: 0.18, GBP: 0.16, CAD: 0.27,
     AUD: 0.30, JPY: 29.0, CHF: 0.17, MXN: 3.40,

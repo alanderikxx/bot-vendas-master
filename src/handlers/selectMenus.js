@@ -78,15 +78,42 @@ module.exports = async (interaction, client) => {
     if (!pedido) return interaction.reply({ content: '❌ Pedido não encontrado.', ephemeral: true });
     if (pedido.status !== 'pendente') return interaction.reply({ content: `⚠️ Pedido já: **${pedido.status}**`, ephemeral: true });
 
-    // BRL → PIX normal via EFI
-    if (moeda === 'BRL') {
-      const { gerarPixPedido } = require('../systems/loja');
-      return gerarPixPedido(interaction, pedidoId, client);
-    }
-
+    // BRL → mostrar select de método (PIX, Cartão, Boleto)
     // Outras moedas → mostrar select de método se tiver mais de 1 opção
     const { StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ActionRowBuilder, EmbedBuilder } = require('discord.js');
     const { MOEDAS, METODOS_POR_MOEDA, GRUPOS_METODO } = require('../systems/stripe');
+
+    const GRUPOS_BRL = {
+      pix:    { label: '💠 PIX (instantâneo)',                     emoji: '💠' },
+      card:   { label: '💳 Cartão (+ Apple Pay / Google Pay)',     emoji: '💳' },
+      boleto: { label: '🧾 Boleto Bancário (1-3 dias úteis)',      emoji: '🧾' },
+    };
+
+    if (moeda === 'BRL') {
+      const selectRow = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`metodo_select_BRL_${pedidoId}`)
+          .setPlaceholder('Escolha o método de pagamento...')
+          .addOptions(
+            new StringSelectMenuOptionBuilder().setValue('pix').setLabel('💠 PIX (instantâneo)').setDescription('Pagamento instantâneo via PIX'),
+            new StringSelectMenuOptionBuilder().setValue('card').setLabel('💳 Cartão (+ Apple Pay / Google Pay)').setDescription('Cartão de crédito/débito'),
+            new StringSelectMenuOptionBuilder().setValue('boleto').setLabel('🧾 Boleto Bancário').setDescription('Vence em 3 dias úteis'),
+          ),
+      );
+      return interaction.update({
+        embeds: [new EmbedBuilder()
+          .setColor(0x1DB954)
+          .setTitle('🇧🇷 Método de Pagamento — Real (BRL)')
+          .setDescription([
+            `> Escolha como deseja pagar em **Reais**.`,
+            '',
+            `💵 **Valor:** R$ ${Number(pedido.valor_total).toFixed(2)}`,
+          ].join('\n'))
+          .setFooter({ text: 'Máximo Store' })],
+        components: [selectRow],
+      });
+    }
+
     const info    = MOEDAS[moeda];
     const metodos = METODOS_POR_MOEDA[moeda] || ['card'];
 
@@ -175,26 +202,33 @@ module.exports = async (interaction, client) => {
     const partes   = id.replace('metodo_select_', '').split('_');
     const moeda    = partes[0];
     const pedidoId = partes.slice(1).join('_');
-    const metodo   = interaction.values[0]; // 'auto' | 'card' | 'boleto' | etc.
+    const metodo   = interaction.values[0];
 
     const pedido = Pedidos.get(pedidoId);
     if (!pedido) return interaction.reply({ content: '❌ Pedido não encontrado.', ephemeral: true });
     if (pedido.status !== 'pendente') return interaction.reply({ content: `⚠️ Pedido já: **${pedido.status}**`, ephemeral: true });
+
+    // BRL + PIX → EFI Bank direto
+    if (moeda === 'BRL' && metodo === 'pix') {
+      const { gerarPixPedido } = require('../systems/loja');
+      return gerarPixPedido(interaction, pedidoId, client);
+    }
 
     await interaction.deferReply({ flags: 64 });
     try {
       const stripe  = require('../systems/stripe');
       const { MOEDAS, GRUPOS_METODO } = stripe;
       const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
-      const info    = MOEDAS[moeda];
+      const info    = MOEDAS[moeda] || { nome: 'Real Brasileiro', emoji: '🇧🇷', simbolo: 'R$' };
       const produto = Produtos.get(pedido.produto_id);
 
       // ── Checkout (cartão, boleto) ──────────────────────────────────────
+      // BRL com cartão/boleto: usa valor direto sem conversão
       const checkout = await stripe.criarCheckout({
         valorBrl:  pedido.valor_total,
         descricao: `Máximo Store — ${produto?.nome || 'Produto'}`,
         pedidoId,
-        moeda,
+        moeda:     moeda === 'BRL' ? 'BRL' : moeda,
         metodo:    (metodo === 'auto' || metodo === 'card') ? null : metodo,
       });
 
