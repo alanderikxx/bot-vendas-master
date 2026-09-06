@@ -280,33 +280,39 @@ function buildUsuariosMenu() {
 
 function buildCaixaMenu() {
   const { listarCaixasAtivas, getItensCaixa, RARIDADES } = require('./caixaMisteriosa');
-  const caixas = listarCaixasAtivas();
+  // Inclui caixas inativas também para gerenciamento
+  const caixas = db.prepare('SELECT * FROM caixa_config ORDER BY criado_em DESC').all();
 
   const embed = new EmbedBuilder()
     .setColor(0xFFD700)
     .setTitle('🎁 Painel — Caixas Misteriosas')
     .setDescription(caixas.length
       ? caixas.map(c => {
-          const itens = getItensCaixa(c.id);
+          const itens     = getItensCaixa(c.id);
+          const totalChance = itens.reduce((a, i) => a + i.chance, 0);
+          const statusBar = totalChance === 100 ? '✅' : totalChance > 100 ? '⚠️' : '📉';
           const linhas = itens.map(i => `  ${RARIDADES[i.raridade]?.emoji || '⚪'} ${i.variante_nome} — ${i.chance}%`);
-          return [`**🎁 ${c.nome}** — R$ ${c.preco.toFixed(2)} | 🎰 ${c.total_abertas} abertas`, ...linhas].join('\n');
+          return [
+            `${c.ativa ? '🟢' : '🔴'} **${c.nome}** — R$ ${c.preco.toFixed(2)} | 🎰 ${c.total_abertas} abertas | ${statusBar} ${totalChance}%`,
+            ...linhas,
+          ].join('\n');
         }).join('\n\n')
       : '❌ Nenhuma caixa criada.\nClique em **➕ Criar** para começar.')
-    .setFooter({ text: 'Máximo Store • Caixas' })
+    .setFooter({ text: `Máximo Store • ${caixas.length} caixa(s) cadastrada(s)` })
     .setTimestamp();
 
   const row1 = new ActionRowBuilder().addComponents(
-    btn('pa_caixa_criar',     '➕ Criar',    ButtonStyle.Success),
-    btn('pa_caixa_add_item',  '🎯 Add Item', ButtonStyle.Primary),
-    btn('pa_caixa_rem_item',  '➖ Rem Item', ButtonStyle.Danger),
-    btn('pa_caixa_deletar',   '🗑️ Deletar',  ButtonStyle.Danger),
+    btn('pa_caixa_criar',    '➕ Criar',        ButtonStyle.Success),
+    btn('pa_caixa_editar',   '✏️ Editar',       ButtonStyle.Primary),
+    btn('pa_caixa_add_item', '🎯 Add Item',     ButtonStyle.Primary),
+    btn('pa_caixa_listar',   '📋 Gerenciar',    ButtonStyle.Secondary),
+    btn('pa_caixa_publicar', '📢 Publicar',     ButtonStyle.Success),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_caixa_publicar',  '📢 Publicar',       ButtonStyle.Success),
-    btn('pa_caixa_historico', '📊 Histórico',      ButtonStyle.Secondary),
-    btn('pa_caixa_toggle',    '🔴/🟢 Ativar',      ButtonStyle.Secondary),
-    btn('pa_home',            '🔙 Voltar',         ButtonStyle.Secondary),
+    btn('pa_caixa_historico', '📊 Histórico',   ButtonStyle.Secondary),
+    btn('pa_caixa_deletar',   '🗑️ Deletar',     ButtonStyle.Danger),
+    btn('pa_home',            '🔙 Voltar',      ButtonStyle.Secondary),
   );
 
   return { embed, components: [row1, row2] };
@@ -1486,6 +1492,24 @@ async function handlePainelAdmin(interaction, client) {
     return cx.abrirCriar(interaction);
   }
 
+  if (id === 'pa_caixa_editar') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const cx = require('./caixaSubmenu');
+    return cx.selecionarCaixaListar(interaction); // reusa o select, depois redireciona para editar
+  }
+
+  if (id === 'pa_caixa_listar') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const cx = require('./caixaSubmenu');
+    return cx.selecionarCaixaListar(interaction);
+  }
+
+  if (id === 'pa_caixa_add_item') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const cx = require('./caixaSubmenu');
+    return cx.abrirItem(interaction);
+  }
+
   // Alias antigo
   if (id === 'pa_caixa_config') {
     return handlePainelAdmin({ ...interaction, customId: 'pa_caixa_criar' }, client);
@@ -1500,29 +1524,11 @@ async function handlePainelAdmin(interaction, client) {
     return interaction.showModal(modal);
   }
 
-  if (id === 'pa_caixa_add_item') {
+  // Legado — rem_item e toggle agora são feitos pelo submenu de listar
+  if (id === 'pa_caixa_rem_item' || id === 'pa_caixa_toggle') {
     if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
     const cx = require('./caixaSubmenu');
-    return cx.abrirItem(interaction);
-  }
-
-  if (id === 'pa_caixa_rem_item') {
-    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
-    const modal = new ModalBuilder().setCustomId('pam_caixa_rem_item').setTitle('➖ Remover Item');
-    modal.addComponents(
-      mRow(new TextInputBuilder().setCustomId('caixa_id').setLabel('ID ou nome da caixa').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Deixe vazio para remover de todas')),
-      mRow(new TextInputBuilder().setCustomId('variante_id').setLabel('ID da Variante para remover').setStyle(TextInputStyle.Short).setRequired(true)),
-    );
-    return interaction.showModal(modal);
-  }
-
-  if (id === 'pa_caixa_toggle') {
-    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
-    const modal = new ModalBuilder().setCustomId('pam_caixa_toggle').setTitle('🔴/🟢 Ativar/Desativar Caixa');
-    modal.addComponents(
-      mRow(new TextInputBuilder().setCustomId('caixa_id').setLabel('ID ou nome da caixa').setStyle(TextInputStyle.Short).setRequired(true)),
-    );
-    return interaction.showModal(modal);
+    return cx.selecionarCaixaListar(interaction);
   }
 
   if (id === 'pa_caixa_publicar') {
@@ -1563,6 +1569,67 @@ async function handlePainelAdmin(interaction, client) {
       mRow(new TextInputBuilder().setCustomId('duracao').setLabel('Duração (minutos)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('60')),
     );
     return interaction.showModal(modal);
+  }
+
+  // ─── Botões inline do gerenciador de caixas ──────────────────────────────
+  if (id.startsWith('cxi_add_item_')) {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const caixaId  = id.replace('cxi_add_item_', '');
+    const caixaNome = db.prepare('SELECT nome FROM caixa_config WHERE id=?').get(caixaId)?.nome;
+    const cx = require('./caixaSubmenu');
+    // Pré-preenche a caixa na sessão
+    const { nova: novaSessao } = (() => {
+      // Acessa a função nova interna via require e inicia sessão com caixaId
+      const m = require('./caixaSubmenu');
+      const s = { tipo: 'item', caixaId, caixaNome };
+      // Reinicia item session com caixaId pré-definido
+      return { nova: () => m };
+    })();
+    return cx.abrirItem(interaction);
+  }
+
+  if (id.startsWith('cxi_editar_caixa_')) {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const caixaId = id.replace('cxi_editar_caixa_', '');
+    const cx = require('./caixaSubmenu');
+    return cx.abrirEditar(interaction, caixaId);
+  }
+
+  if (id.startsWith('cxi_toggle_caixa_')) {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const caixaId = id.replace('cxi_toggle_caixa_', '');
+    const cx = require('./caixaSubmenu');
+    return cx.toggleCaixa(interaction, caixaId);
+  }
+
+  if (id.startsWith('cxi_edit_item_')) {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const itemId = id.replace('cxi_edit_item_', '');
+    const cx = require('./caixaSubmenu');
+    return cx.abrirEditarItem(interaction, itemId);
+  }
+
+  if (id.startsWith('cxi_toggle_item_')) {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const [itemId, caixaId] = id.replace('cxi_toggle_item_', '').split('_');
+    const cx = require('./caixaSubmenu');
+    return cx.toggleItem(interaction, itemId, caixaId);
+  }
+
+  if (id.startsWith('cxi_del_item_')) {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const partes   = id.replace('cxi_del_item_', '').split('_');
+    const itemId   = partes[0];
+    const caixaId  = partes.slice(1).join('_');
+    const cx = require('./caixaSubmenu');
+    return cx.removerItem(interaction, itemId, caixaId);
+  }
+
+  if (id.startsWith('cxi_listar_')) {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const caixaId = id.replace('cxi_listar_', '');
+    const cx = require('./caixaSubmenu');
+    return cx.listarItens(interaction, caixaId);
   }
 
   // ─── USUÁRIOS ──────────────────────────────────────────────────────────────

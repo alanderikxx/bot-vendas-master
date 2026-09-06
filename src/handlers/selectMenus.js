@@ -50,6 +50,19 @@ module.exports = async (interaction, client) => {
     const cx = require('../systems/caixaSubmenu');
     return cx.itemSelectVariante(interaction);
   }
+  if (id === 'cxs_raridade') {
+    const cx = require('../systems/caixaSubmenu');
+    return cx.itemSelectRaridade(interaction);
+  }
+  if (id === 'cxs_listar_caixa') {
+    const cx = require('../systems/caixaSubmenu');
+    return cx.selectListarCaixa(interaction);
+  }
+  if (id.startsWith('cxs_item_acao_')) {
+    const caixaId = id.replace('cxs_item_acao_', '');
+    const cx = require('../systems/caixaSubmenu');
+    return cx.itemSelectAcao(interaction, caixaId);
+  }
 
   // ── Selecionar carrinho para editar ──────────────────────────────────────
   if (id === 'pa_select_editar_carrinho') {

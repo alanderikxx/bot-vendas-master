@@ -112,19 +112,29 @@ module.exports = async (interaction, client) => {
   // ── Submenu Caixa Misteriosa (cxc_*, cxi_*) ──────────────────────────────
   if (id.startsWith('cxc_') || id.startsWith('cxi_')) {
     const cx = require('../systems/caixaSubmenu');
-    // Criar caixa
+    // Criar/Editar caixa
     if (id === 'cxc_nome')     return cx.criarModalNome(interaction);
     if (id === 'cxc_canal')    return cx.criarModalCanal(interaction);
     if (id === 'cxc_desc')     return cx.criarModalDesc(interaction);
     if (id === 'cxc_img')      return cx.criarModalImg(interaction);
     if (id === 'cxc_salvar')   return cx.criarSalvar(interaction);
     if (id === 'cxc_cancelar') return cx.criarCancelar(interaction);
-    // Add item
+    // Add/Editar item
     if (id === 'cxi_caixa')    return cx.itemSelecionarCaixa(interaction);
     if (id === 'cxi_variante') return cx.itemSelecionarVariante(interaction);
-    if (id === 'cxi_dados')    return cx.itemModalDados(interaction);
+    if (id === 'cxi_raridade') return cx.itemSelecionarRaridade(interaction);
+    if (id === 'cxi_chance')   return cx.itemModalChance(interaction);
+    if (id === 'cxi_dados')    return cx.itemModalChance(interaction); // legado
     if (id === 'cxi_salvar')   return cx.itemSalvar(interaction);
     if (id === 'cxi_cancelar') return cx.itemCancelar(interaction);
+    // Botões inline do listar — roteados para painelAdmin que já tem os handlers
+    if (id.startsWith('cxi_add_item_') || id.startsWith('cxi_editar_caixa_') ||
+        id.startsWith('cxi_toggle_caixa_') || id.startsWith('cxi_edit_item_') ||
+        id.startsWith('cxi_toggle_item_') || id.startsWith('cxi_del_item_') ||
+        id.startsWith('cxi_listar_')) {
+      const { handlePainelAdmin } = require('../systems/painelAdmin');
+      return handlePainelAdmin(interaction, client);
+    }
   }
 
   // ── Saque de coins via PIX ───────────────────────────────────────────────────

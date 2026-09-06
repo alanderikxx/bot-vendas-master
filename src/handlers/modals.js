@@ -75,11 +75,13 @@ module.exports = async (interaction, client) => {
   // ── Modais da caixa misteriosa (cxm_*) ────────────────────────────────────
   if (id.startsWith('cxm_')) {
     const cx = require('../systems/caixaSubmenu');
-    if (id === 'cxm_nome')      return cx.criarProcessarNome(interaction);
-    if (id === 'cxm_canal')     return cx.criarProcessarCanal(interaction);
-    if (id === 'cxm_desc')      return cx.criarProcessarDesc(interaction);
-    if (id === 'cxm_img')       return cx.criarProcessarImg(interaction);
-    if (id === 'cxm_item_dados') return cx.itemProcessarDados(interaction);
+    if (id === 'cxm_nome')       return cx.criarProcessarNome(interaction);
+    if (id === 'cxm_canal')      return cx.criarProcessarCanal(interaction);
+    if (id === 'cxm_desc')       return cx.criarProcessarDesc(interaction);
+    if (id === 'cxm_img')        return cx.criarProcessarImg(interaction);
+    if (id === 'cxm_chance')     return cx.itemProcessarChance(interaction);
+    // legado — mantém compatibilidade com sessões abertas antes da atualização
+    if (id === 'cxm_item_dados') return cx.itemProcessarChance(interaction);
     return;
   }
 
