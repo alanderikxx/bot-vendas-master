@@ -327,6 +327,13 @@ module.exports = async (interaction, client) => {
     return gerarPixPedido(interaction, pedidoId, client);
   }
 
+  // ── Pagar com Coins ───────────────────────────────────────────────────────────
+  if (id.startsWith('pagar_coins_')) {
+    const pedidoId = id.replace('pagar_coins_', '');
+    const { pagarComCoins } = require('../systems/loja');
+    return pagarComCoins(interaction, pedidoId, client);
+  }
+
   // ── Aceitar compra sem pagamento (liberar manualmente) ───────────────────────
   if (id.startsWith('ticket_aceitar_sem_pag_')) {
     const pedidoId = id.replace('ticket_aceitar_sem_pag_', '');

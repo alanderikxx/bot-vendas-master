@@ -547,11 +547,14 @@ async function entregarProduto(pedido, client) {
       Usuarios.atualizar(pedido.usuario_id, { total_gasto: novoGasto, total_compras: novasCompras });
       Usuarios.addPontos(pedido.usuario_id, Math.floor(pedido.valor_total));
 
-      // Cashback 5% em compras sem cupom (1 real = 100 coins, 5% = 5 coins por real)
-      if (!pedido.cupom_usado && pedido.valor_total >= 1) {
+      // Cashback 5% — apenas em compras pagas com PIX ou cartão (não coins)
+      const metodo = pedido.metodo_pag || '';
+      const pagoComCoins = metodo.includes('coins') || pedido.nota_fiscal?.includes('coins_pagamento');
+      if (!pedido.cupom_usado && !pagoComCoins && pedido.valor_total >= 1) {
         const { addCoins } = require('./coins');
-        const coinsCashback = Math.floor(pedido.valor_total * 5); // 5 coins por real = 5% cashback
-        addCoins(pedido.usuario_id, coinsCashback, `Cashback 5% — Pedido ${pedido.id.slice(0,8).toUpperCase()}`);
+        const pct = parseInt(require('../database/database').Config.get('cashback_pct') || '5');
+        const coinsCashback = Math.floor(pedido.valor_total * pct);
+        addCoins(pedido.usuario_id, coinsCashback, `Cashback ${pct}% — Pedido ${pedido.id.slice(0,8).toUpperCase()}`);
       }
 
       // Comissão afiliado
@@ -667,6 +670,12 @@ async function entregarProduto(pedido, client) {
           await canalVendas.send({ embeds: [feedEmbed] }).catch(() => {});
         }
       }
+    } catch {}
+
+    // ── Log detalhado de vendas no canal fixo ─────────────────────────────
+    try {
+      const { logVenda } = require('../utils/canalVendas');
+      await logVenda(client, pedido);
     } catch {}
   } catch (err) {
     console.error('[EntregarProduto]', err.message);

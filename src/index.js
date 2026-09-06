@@ -165,6 +165,12 @@ client.once('clientReady', async () => {
         if (semMsg.length) console.log(`⚠️ Painéis sem mensagem_id: ${semMsg.map(p => p.id.slice(0,8)).join(', ')}`);
         console.log(`✅ Painéis atualizados.`);
       } catch (e) { console.error('[Init Painéis]', e.message); }
+
+      // Enviar histórico de vendas anteriores no canal de log
+      try {
+        const { enviarHistoricoVendas } = require('./utils/canalVendas');
+        await enviarHistoricoVendas(client);
+      } catch (e) { console.error('[Init CanalVendas]', e.message); }
     } catch (e) { console.error('[Init]', e.message); }
   }, 3000);
 });
