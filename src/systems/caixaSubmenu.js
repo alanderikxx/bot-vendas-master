@@ -22,6 +22,7 @@ const RARIDADES = {
   raro:     { label: 'Raro',     emoji: '🔵', cor: 0x3498DB, stars: '⭐⭐' },
   epico:    { label: 'Épico',    emoji: '🟣', cor: 0x9B59B6, stars: '⭐⭐⭐' },
   lendario: { label: 'Lendário', emoji: '🌟', cor: 0xF1C40F, stars: '⭐⭐⭐⭐' },
+  mitico:   { label: 'Mítico',   emoji: '🔴', cor: 0xFF0000, stars: '⭐⭐⭐⭐⭐' },
 };
 
 // ─── Estado em memória ────────────────────────────────────────────────────────

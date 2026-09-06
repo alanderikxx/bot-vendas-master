@@ -19,10 +19,11 @@ const config             = require('../config');
 
 // ─── Raridades ────────────────────────────────────────────────────────────────
 const RARIDADES = {
-  comum:    { label: 'Comum',    emoji: '⚪', cor: 0x95A5A6, stars: '⭐'       },
-  raro:     { label: 'Raro',     emoji: '🔵', cor: 0x3498DB, stars: '⭐⭐'     },
-  epico:    { label: 'Épico',    emoji: '🟣', cor: 0x9B59B6, stars: '⭐⭐⭐'   },
-  lendario: { label: 'Lendário', emoji: '🌟', cor: 0xF1C40F, stars: '⭐⭐⭐⭐' },
+  comum:    { label: 'Comum',    emoji: '⚪', cor: 0x95A5A6, stars: '⭐'          },
+  raro:     { label: 'Raro',     emoji: '🔵', cor: 0x3498DB, stars: '⭐⭐'        },
+  epico:    { label: 'Épico',    emoji: '🟣', cor: 0x9B59B6, stars: '⭐⭐⭐'      },
+  lendario: { label: 'Lendário', emoji: '🌟', cor: 0xF1C40F, stars: '⭐⭐⭐⭐'    },
+  mitico:   { label: 'Mítico',   emoji: '🔴', cor: 0xFF0000, stars: '⭐⭐⭐⭐⭐'  },
 };
 
 // ─── Listar todas as caixas ativas ────────────────────────────────────────────
@@ -299,15 +300,17 @@ async function entregarPrêmioCaixa(pedido, client) {
     if (msgAnim) {
       // Animação de suspense por raridade
       const raridade  = itemSorteado.raridade;
-      const framesPre = raridade === 'lendario'
-        ? ['🌑🌑🌑🌑🌑🌑🌑🌑🌑🌑','🌒🌑🌑🌑🌑🌑🌑🌑🌑🌑','🌓🌒🌑🌑🌑🌑🌑🌑🌑🌑','🌔🌓🌒🌑🌑🌑🌑🌑🌑🌑','🌕🌔🌓🌒🌑🌑🌑🌑🌑🌑','🌟🌕🌔🌓🌒🌑🌑🌑🌑🌑','✨🌟🌕🌔🌓🌒🌑🌑🌑🌑','🎆✨🌟🌕🌔🌓🌒🌑🌑🌑','🎇🎆✨🌟🌕🌔🌓🌒🌑🌑']
-        : raridade === 'epico'
-          ? ['⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛','🟪⬛⬛⬛⬛⬛⬛⬛⬛⬛','🟪🟪⬛⬛⬛⬛⬛⬛⬛⬛','🟪🟪🟪🟪⬛⬛⬛⬛⬛⬛','🟪🟪🟪🟪🟪🟪⬛⬛⬛⬛','✨🟪🟪🟪🟪🟪🟪🟪⬛⬛']
-          : raridade === 'raro'
-            ? ['⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜','🟦⬜⬜⬜⬜⬜⬜⬜⬜⬜','🟦🟦🟦⬜⬜⬜⬜⬜⬜⬜','🟦🟦🟦🟦🟦⬜⬜⬜⬜⬜','🟦🟦🟦🟦🟦🟦🟦🟦⬜⬜']
-            : ['⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜','🟨⬜⬜⬜⬜⬜⬜⬜⬜⬜','🟨🟨🟨⬜⬜⬜⬜⬜⬜⬜','🟨🟨🟨🟨🟨🟨⬜⬜⬜⬜'];
+      const framesPre = raridade === 'mitico'
+        ? ['⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛','🟥⬛⬛⬛⬛⬛⬛⬛⬛⬛','🟥🟥⬛⬛⬛⬛⬛⬛⬛⬛','🟥🟥🟥⬛⬛⬛⬛⬛⬛⬛','🟥🟥🟥🟥🟥⬛⬛⬛⬛⬛','💥🟥🟥🟥🟥🟥🟥⬛⬛⬛','💥💥🟥🟥🟥🟥🟥🟥🟥⬛','🔴💥💥🟥🟥🟥🟥🟥🟥🟥','🔴🔴💥💥💥🟥🟥🟥🟥🟥','🔴🔴🔴💥💥💥💥💥🟥🟥']
+        : raridade === 'lendario'
+          ? ['🌑🌑🌑🌑🌑🌑🌑🌑🌑🌑','🌒🌑🌑🌑🌑🌑🌑🌑🌑🌑','🌓🌒🌑🌑🌑🌑🌑🌑🌑🌑','🌔🌓🌒🌑🌑🌑🌑🌑🌑🌑','🌕🌔🌓🌒🌑🌑🌑🌑🌑🌑','🌟🌕🌔🌓🌒🌑🌑🌑🌑🌑','✨🌟🌕🌔🌓🌒🌑🌑🌑🌑','🎆✨🌟🌕🌔🌓🌒🌑🌑🌑','🎇🎆✨🌟🌕🌔🌓🌒🌑🌑']
+          : raridade === 'epico'
+            ? ['⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛','🟪⬛⬛⬛⬛⬛⬛⬛⬛⬛','🟪🟪⬛⬛⬛⬛⬛⬛⬛⬛','🟪🟪🟪🟪⬛⬛⬛⬛⬛⬛','🟪🟪🟪🟪🟪🟪⬛⬛⬛⬛','✨🟪🟪🟪🟪🟪🟪🟪⬛⬛']
+            : raridade === 'raro'
+              ? ['⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜','🟦⬜⬜⬜⬜⬜⬜⬜⬜⬜','🟦🟦🟦⬜⬜⬜⬜⬜⬜⬜','🟦🟦🟦🟦🟦⬜⬜⬜⬜⬜','🟦🟦🟦🟦🟦🟦🟦🟦⬜⬜']
+              : ['⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜','🟨⬜⬜⬜⬜⬜⬜⬜⬜⬜','🟨🟨🟨⬜⬜⬜⬜⬜⬜⬜','🟨🟨🟨🟨🟨🟨⬜⬜⬜⬜'];
 
-      const delay = raridade === 'lendario' ? 500 : raridade === 'epico' ? 550 : 600;
+      const delay = raridade === 'mitico' ? 450 : raridade === 'lendario' ? 500 : raridade === 'epico' ? 550 : 600;
       for (const f of framesPre) {
         await new Promise(r => setTimeout(r, delay));
         embedAnim.setDescription(`✨ *Sorteando...*\n\n\`\`\`\n${f}\n\`\`\``);
@@ -396,6 +399,7 @@ async function mostrarHistorico(interaction) {
   const stats = db.prepare(`
     SELECT COUNT(*) as total,
       SUM(cc.preco) as total_gasto,
+      COUNT(CASE WHEN ch.raridade='mitico'   THEN 1 END) as miticos,
       COUNT(CASE WHEN ch.raridade='lendario' THEN 1 END) as lendarios,
       COUNT(CASE WHEN ch.raridade='epico'    THEN 1 END) as epicos,
       COUNT(CASE WHEN ch.raridade='raro'     THEN 1 END) as raros,
@@ -405,7 +409,7 @@ async function mostrarHistorico(interaction) {
     WHERE ch.usuario_id=?
   `).get(interaction.user.id);
 
-  const melhor = hist.find(h => h.raridade === 'lendario') || hist.find(h => h.raridade === 'epico') || hist[0];
+  const melhor = hist.find(h => h.raridade === 'mitico') || hist.find(h => h.raridade === 'lendario') || hist.find(h => h.raridade === 'epico') || hist[0];
   const melhorRar = RARIDADES[melhor?.raridade] || RARIDADES.comum;
 
   const embed = new EmbedBuilder()
@@ -415,6 +419,7 @@ async function mostrarHistorico(interaction) {
       { name: '🎰 Total abertas',   value: `**${stats.total}**`,                                      inline: true },
       { name: '💰 Total gasto',     value: `**R$ ${Number(stats.total_gasto || 0).toFixed(2)}**`,      inline: true },
       { name: '🏆 Melhor item',     value: `${melhorRar.emoji} **${melhor?.item_nome || '—'}**`,        inline: true },
+      { name: '🔴 Míticos',         value: `**${stats.miticos}**`,                                     inline: true },
       { name: '🌟 Lendários',       value: `**${stats.lendarios}**`,                                   inline: true },
       { name: '🟣 Épicos',          value: `**${stats.epicos}**`,                                      inline: true },
       { name: '🔵 Raros',           value: `**${stats.raros}**`,                                       inline: true },
