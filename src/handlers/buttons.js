@@ -497,8 +497,57 @@ module.exports = async (interaction, client) => {
     return interaction.showModal(modal);
   }
 
-  if (id.startsWith('afil_gerar_codigo_')) {
-    const afilId = id.replace('afil_gerar_codigo_', '');
+  // ── Submenu de saque (saque_campo_*, saque_confirmar, saque_cancelar) ───────
+  if (id.startsWith('saque_')) {
+    const sq = require('../systems/saqueSubmenu');
+    if (id === 'saque_campo_valor')   return sq.modalValor(interaction);
+    if (id === 'saque_campo_nome')    return sq.modalNome(interaction);
+    if (id === 'saque_campo_tipo')    return sq.modalTipoPix(interaction);
+    if (id === 'saque_campo_chave')   return sq.modalChavePix(interaction);
+    if (id === 'saque_confirmar')     return sq.confirmarSaque(interaction);
+    if (id === 'saque_cancelar')      return sq.cancelarSaque(interaction);
+  }
+
+  // ── Aprovar saque de afiliado ─────────────────────────────────────────────────
+  if (id.startsWith('afil_aprovar_saque_')) {
+    const { isAdmin } = require('../utils/permissions');
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    // formato: afil_aprovar_saque_{afilId}_{valor}
+    const partes  = id.replace('afil_aprovar_saque_', '').split('_');
+    const afilId  = partes[0];
+    const valor   = parseFloat(partes[1] || '0');
+    await interaction.deferReply({ ephemeral: true });
+    const usuario = db.prepare('SELECT * FROM usuarios WHERE discord_id=?').get(afilId);
+    if (!usuario) return interaction.editReply({ content: '❌ Usuário não encontrado.' });
+    if (valor > (usuario.saldo || 0)) return interaction.editReply({ content: '❌ Saldo insuficiente no momento.' });
+    db.prepare('UPDATE usuarios SET saldo=saldo-? WHERE discord_id=?').run(valor, afilId);
+    // Notificar afiliado
+    try {
+      const membro = await interaction.guild.members.fetch(afilId).catch(() => null);
+      if (membro) await membro.send({ embeds: [new EmbedBuilder().setColor(0x00D26A).setTitle('💸 Saque Aprovado!').setDescription(`> Seu saque de **R$ ${valor.toFixed(2)}** foi aprovado e será enviado via PIX!`).setTimestamp().setFooter({ text: 'Máximo Store • Afiliados' })] }).catch(() => {});
+    } catch {}
+    // Desabilitar botões na mensagem
+    await interaction.message.edit({ components: [] }).catch(() => {});
+    const { log } = require('../utils/logger');
+    await log('sistema', { executor: interaction.user.id, descricao: `✅ Saque aprovado: R$ ${valor.toFixed(2)} para <@${afilId}>` });
+    return interaction.editReply({ content: `✅ Saque de **R$ ${valor.toFixed(2)}** aprovado para <@${afilId}>! Saldo debitado.` });
+  }
+
+  // ── Rejeitar saque de afiliado ────────────────────────────────────────────────
+  if (id.startsWith('afil_rejeitar_saque_')) {
+    const { isAdmin } = require('../utils/permissions');
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const afilId = id.replace('afil_rejeitar_saque_', '').split('_')[0];
+    await interaction.deferReply({ ephemeral: true });
+    try {
+      const membro = await interaction.guild.members.fetch(afilId).catch(() => null);
+      if (membro) await membro.send({ embeds: [new EmbedBuilder().setColor(0xE74C3C).setTitle('❌ Saque Rejeitado').setDescription('> Seu pedido de saque foi rejeitado. Entre em contato com o suporte.').setTimestamp().setFooter({ text: 'Máximo Store • Afiliados' })] }).catch(() => {});
+    } catch {}
+    await interaction.message.edit({ components: [] }).catch(() => {});
+    return interaction.editReply({ content: `✅ Saque de <@${afilId}> rejeitado. Saldo mantido.` });
+  }
+
+  if (id.startsWith('afil_gerar_codigo_')) {    const afilId = id.replace('afil_gerar_codigo_', '');
     if (interaction.user.id !== afilId) return interaction.reply({ content: '❌ Sem permissão.', ephemeral: true });
     const modal = new ModalBuilder().setCustomId(`modal_afil_novo_codigo_${afilId}`).setTitle('🔄 Gerar Novo Código de Vendas');
     modal.addComponents(

@@ -135,6 +135,23 @@ module.exports = async (interaction, client) => {
     });
   }
 
+  // ── Modais do submenu de saque (saque_m_*) ───────────────────────────────────
+  if (id.startsWith('saque_m_')) {
+    const sq = require('../systems/saqueSubmenu');
+    if (id === 'saque_m_valor') return sq.processarValor(interaction);
+    if (id === 'saque_m_nome')  return sq.processarNome(interaction);
+    if (id === 'saque_m_tipo')  return sq.processarTipo(interaction);
+    if (id === 'saque_m_chave') return sq.processarChave(interaction);
+    return;
+  }
+
+  // ── Modal solicitação de saque do afiliado ────────────────────────────────────
+  if (id.startsWith('modal_afil_saque_')) {
+    const afilId = id.replace('modal_afil_saque_', '');
+    const { processarSolicitacaoSaque } = require('../systems/afiliados');
+    return processarSolicitacaoSaque(interaction, afilId);
+  }
+
   // ── Modal acesso ao painel de afiliado ────────────────────────────────────────
   if (id === 'modal_afil_acesso') {
     const codigo = interaction.fields.getTextInputValue('codigo').trim();

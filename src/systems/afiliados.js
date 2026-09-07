@@ -368,25 +368,14 @@ async function mostrarHistoricoAfiliado(interaction, afilId) {
   return interaction.editReply({ embeds: [embed] });
 }
 
-// ─── Solicitar saque ─────────────────────────────────────────────────────────
+// ─── Solicitar saque — delega para o submenu ─────────────────────────────────
 async function solicitarSaque(interaction, afilId) {
-  const usuario = db.prepare('SELECT * FROM usuarios WHERE discord_id=?').get(afilId || interaction.user.id);
-  if (!usuario) return interaction.reply({ content: '❌ Usuário não encontrado.', ephemeral: true });
-
-  const minSaque = parseFloat(Config.get('min_saque_afiliado') || '20');
-  if ((usuario.saldo || 0) < minSaque) {
-    return interaction.reply({ content: `❌ Saldo insuficiente. Mínimo: R$ ${minSaque.toFixed(2)}`, ephemeral: true });
-  }
-
-  const { abrirTicket } = require('./tickets');
-  const memberObj = interaction.member || await interaction.guild?.members.fetch(afilId || interaction.user.id).catch(() => null);
-  const { ok, canal } = await abrirTicket(interaction.guild, memberObj, 'saque', { valor: usuario.saldo });
-  if (ok) {
-    await log('afiliado', { usuario: afilId || interaction.user.id, valor: usuario.saldo, descricao: `Solicitação de saque: R$ ${usuario.saldo.toFixed(2)}` });
-    return interaction.reply({ content: `✅ Saque solicitado! Acesse ${canal} para continuar.`, ephemeral: true });
-  }
-  return interaction.reply({ content: '❌ Erro ao criar ticket de saque.', ephemeral: true });
+  const { abrirSaqueSubmenu } = require('./saqueSubmenu');
+  return abrirSaqueSubmenu(interaction, afilId || interaction.user.id);
 }
+
+// ─── processarSolicitacaoSaque — mantido para compatibilidade ────────────────
+async function processarSolicitacaoSaque() {} // delegado ao saqueSubmenu
 
 // ─── Embed fixo do canal ─────────────────────────────────────────────────────
 async function enviarEmbedCanalAfiliados(guild) {
@@ -435,6 +424,7 @@ module.exports = {
   mostrarPainelAfiliado,
   mostrarHistoricoAfiliado,
   solicitarSaque,
+  processarSolicitacaoSaque,
   enviarEmbedCanalAfiliados,
   gerarCodigo,
   CANAL_AFILIADOS,
