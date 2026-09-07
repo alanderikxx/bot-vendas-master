@@ -449,6 +449,11 @@ module.exports = async (interaction, client) => {
   }
 
   // ── Painel do afiliado (canal fixo) ──────────────────────────────────────────
+  if (id === 'afil_ranking') {
+    const { mostrarRankingAfiliados } = require('../systems/afiliados');
+    return mostrarRankingAfiliados(interaction);
+  }
+
   if (id === 'afil_acessar_painel') {
     const modal = new ModalBuilder().setCustomId('modal_afil_acesso').setTitle('🔑 Acessar Painel de Afiliado');
     modal.addComponents(

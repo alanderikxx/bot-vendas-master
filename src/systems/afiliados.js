@@ -406,6 +406,7 @@ async function enviarEmbedCanalAfiliados(guild) {
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('afil_acessar_painel').setLabel('🔑 Acessar Meu Painel').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('afil_ranking').setLabel('🏆 Ranking').setStyle(ButtonStyle.Secondary),
     );
 
     const msgs = await canal.messages.fetch({ limit: 10 }).catch(() => null);
@@ -415,6 +416,67 @@ async function enviarEmbedCanalAfiliados(guild) {
   } catch (e) {
     console.error('[Afiliados] Erro canal:', e.message);
   }
+}
+
+// ─── Ranking de afiliados ────────────────────────────────────────────────────
+async function mostrarRankingAfiliados(interaction) {
+  if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
+
+  // Top 10 N1 por total de comissão gerada (própria + dos seus N2)
+  const top = db.prepare(`
+    SELECT u.discord_id, u.nome, u.codigo_afil,
+      COALESCE(SUM(p.comissao_afil),0) as comissao_propria,
+      COUNT(DISTINCT p.id) as vendas
+    FROM usuarios u
+    LEFT JOIN pedidos p ON p.afiliado_id=u.discord_id AND p.status IN ('pago','entregue')
+    WHERE u.nivel_afil=1
+    GROUP BY u.discord_id
+    ORDER BY comissao_propria DESC
+    LIMIT 10
+  `).all();
+
+  if (!top.length) return interaction.editReply({ content: '📊 Nenhum afiliado com vendas ainda.' });
+
+  const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
+
+  const linhas = top.map((n1, i) => {
+    // Buscar N2 deste N1
+    const n2list = db.prepare(`
+      SELECT u.discord_id, u.nome, u.codigo_afil,
+        COALESCE(SUM(p.comissao_afil),0) as comissao,
+        COUNT(p.id) as vendas
+      FROM usuarios u
+      LEFT JOIN pedidos p ON p.afiliado_id=u.discord_id AND p.status IN ('pago','entregue')
+      WHERE u.afiliado_de=? AND u.nivel_afil=2
+      GROUP BY u.discord_id
+      ORDER BY comissao DESC
+    `).all(n1.discord_id);
+
+    const n1linha = `${medals[i]} **${n1.nome || n1.discord_id}** (\`${n1.codigo_afil || '—'}\`) — ${n1.vendas} vendas • R$ ${Number(n1.comissao_propria).toFixed(2)}`;
+
+    if (!n2list.length) {
+      return `${n1linha}\n╰ *N/A*`;
+    }
+
+    const n2linhas = n2list.map(n2 =>
+      `╠ **${n2.nome || n2.discord_id}** (\`${n2.codigo_afil || '—'}\`) — ${n2.vendas} vendas • R$ ${Number(n2.comissao).toFixed(2)}`
+    );
+    // Último N2 usa ╚ em vez de ╠
+    if (n2linhas.length > 0) {
+      n2linhas[n2linhas.length - 1] = n2linhas[n2linhas.length - 1].replace('╠', '╚');
+    }
+
+    return [n1linha, ...n2linhas].join('\n');
+  });
+
+  const embed = new EmbedBuilder()
+    .setColor(0xFFD700)
+    .setTitle('🏆 Ranking de Afiliados')
+    .setDescription(linhas.join('\n\n'))
+    .setTimestamp()
+    .setFooter({ text: 'Máximo Store • Top 10 por comissão gerada' });
+
+  return interaction.editReply({ embeds: [embed] });
 }
 
 module.exports = {
@@ -428,6 +490,7 @@ module.exports = {
   buscarPorCodigoAcesso,
   mostrarPainelAfiliado,
   mostrarHistoricoAfiliado,
+  mostrarRankingAfiliados,
   solicitarSaque,
   processarSolicitacaoSaque,
   enviarEmbedCanalAfiliados,
