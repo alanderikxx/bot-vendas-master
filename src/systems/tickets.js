@@ -134,11 +134,24 @@ async function abrirTicket(guild, member, tipo = 'compra', dadosExtra = {}) {
       .setTimestamp()
       .setFooter({ text: `Máximo Store • Aberto por ${member.user.username}` });
 
+    // Verificar se já tem vendedor vinculado ao pedido
+    const pedidoAtual = db.prepare('SELECT afiliado_id FROM pedidos WHERE id=?').get(dadosExtra.pedidoId);
+    const vendedorId  = pedidoAtual?.afiliado_id;
+    if (vendedorId) {
+      const vendedor = db.prepare('SELECT nome, codigo_afil FROM usuarios WHERE discord_id=?').get(vendedorId);
+      embedCompra.addFields({
+        name: '🤝 Vendedor',
+        value: `<@${vendedorId}>${vendedor?.codigo_afil ? ` (\`${vendedor.codigo_afil}\`)` : ''}`,
+        inline: true,
+      });
+    }
+
     // Row 1 — Pagamento (cliente)
     const rowPag = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`escolher_moeda_${dadosExtra.pedidoId}`).setLabel('💳 Escolher Pagamento').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`pagar_coins_${dadosExtra.pedidoId}`).setLabel(`🪙 Pagar com Coins`).setStyle(ButtonStyle.Secondary).setDisabled(!podeCoins),
       new ButtonBuilder().setCustomId(`aplicar_cupom_${dadosExtra.pedidoId}`).setLabel('🎟️ Cupom').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`informar_vendedor_${dadosExtra.pedidoId}`).setLabel('🤝 Código do Vendedor').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`cancelar_pedido_${dadosExtra.pedidoId}`).setLabel('❌ Cancelar').setStyle(ButtonStyle.Danger),
     );
 

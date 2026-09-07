@@ -85,6 +85,64 @@ module.exports = async (interaction, client) => {
     return;
   }
 
+  // ── Modal código do vendedor no pedido ───────────────────────────────────────
+  if (id.startsWith('modal_vendedor_')) {
+    const pedidoId = id.replace('modal_vendedor_', '');
+    const codigo   = interaction.fields.getTextInputValue('codigo').trim();
+    const { Pedidos, db } = require('../database/database');
+    const pedido = Pedidos.get(pedidoId);
+    if (!pedido || pedido.status !== 'pendente') {
+      return interaction.reply({ content: '❌ Pedido não encontrado ou não está pendente.', ephemeral: true });
+    }
+
+    // Remover vendedor
+    if (!codigo) {
+      db.prepare('UPDATE pedidos SET afiliado_id=NULL, comissao_afil=0 WHERE id=?').run(pedidoId);
+      return interaction.reply({ content: '✅ Código de vendedor removido do pedido.', ephemeral: true });
+    }
+
+    const { vincularCodigoAoPedido } = require('../systems/afiliados');
+    const { ok, erro, afiliado } = vincularCodigoAoPedido(pedidoId, codigo, interaction.user.id);
+    if (!ok) return interaction.reply({ content: erro, ephemeral: true });
+
+    // Recalcular comissão estimada e salvar
+    const { Config } = require('../database/database');
+    const taxa = parseFloat(Config.get('taxa_afiliado') || '5');
+    const comissaoEstimada = pedido.valor_total * taxa / 100;
+    db.prepare('UPDATE pedidos SET comissao_afil=? WHERE id=?').run(comissaoEstimada, pedidoId);
+
+    // Atualizar a mensagem do ticket com o novo vendedor
+    try {
+      const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+      const canalTicket = interaction.guild?.channels.cache.get(pedido.ticket_id);
+      if (canalTicket) {
+        const msgs = await canalTicket.messages.fetch({ limit: 5 }).catch(() => null);
+        const msgTicket = msgs?.find(m => m.author.id === interaction.client.user.id && m.embeds.length > 0);
+        if (msgTicket) {
+          const embedAtual = EmbedBuilder.from(msgTicket.embeds[0]);
+          // Remover campo vendedor anterior se existir
+          const fieldsLimpos = (embedAtual.data.fields || []).filter(f => f.name !== '🤝 Vendedor');
+          fieldsLimpos.push({ name: '🤝 Vendedor', value: `<@${afiliado.discord_id}> (\`${afiliado.codigo_afil}\`)`, inline: true });
+          embedAtual.setFields(fieldsLimpos);
+          await msgTicket.edit({ embeds: [embedAtual] }).catch(() => {});
+        }
+      }
+    } catch {}
+
+    return interaction.reply({
+      content: `✅ Vendedor **${afiliado.nome || afiliado.discord_id}** (\`${afiliado.codigo_afil}\`) vinculado ao pedido!`,
+      ephemeral: true,
+    });
+  }
+
+  // ── Modal acesso ao painel de afiliado ────────────────────────────────────────
+  if (id === 'modal_afil_acesso') {
+    const codigo = interaction.fields.getTextInputValue('codigo').trim();
+    const { mostrarPainelAfiliado } = require('../systems/afiliados');
+    await interaction.deferReply({ ephemeral: true });
+    return mostrarPainelAfiliado(interaction, codigo);
+  }
+
   // ── Modal resgate código de coins ─────────────────────────────────────────
   if (id === 'modal_resgatar_codigo') {
     const codigo = interaction.fields.getTextInputValue('codigo');

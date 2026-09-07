@@ -166,6 +166,12 @@ client.once('clientReady', async () => {
         console.log(`✅ Painéis atualizados.`);
       } catch (e) { console.error('[Init Painéis]', e.message); }
 
+      // Enviar embed do canal de afiliados
+      try {
+        const { enviarEmbedCanalAfiliados } = require('./systems/afiliados');
+        await enviarEmbedCanalAfiliados(guild);
+      } catch (e) { console.error('[Init Afiliados]', e.message); }
+
       // Enviar histórico de vendas anteriores no canal de log
       try {
         const { enviarHistoricoVendas } = require('./utils/canalVendas');

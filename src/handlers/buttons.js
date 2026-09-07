@@ -416,6 +416,64 @@ module.exports = async (interaction, client) => {
     }
   }
 
+  // ── Informar código de vendedor/afiliado no pedido ───────────────────────────
+  if (id.startsWith('informar_vendedor_')) {
+    const pedidoId = id.replace('informar_vendedor_', '');
+    const pedido   = Pedidos.get(pedidoId);
+    if (!pedido) return interaction.reply({ content: '❌ Pedido não encontrado.', ephemeral: true });
+    if (pedido.usuario_id !== interaction.user.id) return interaction.reply({ content: '❌ Este pedido não é seu.', ephemeral: true });
+    if (pedido.status !== 'pendente') return interaction.reply({ content: '⚠️ Pedido não está mais pendente.', ephemeral: true });
+
+    // Verificar se já tem vendedor e mostrar quem é
+    let descricaoAtual = '';
+    if (pedido.afiliado_id) {
+      const vendedor = db.prepare('SELECT nome, codigo_afil FROM usuarios WHERE discord_id=?').get(pedido.afiliado_id);
+      descricaoAtual = `\n\n> ✅ Vendedor atual: **${vendedor?.nome || pedido.afiliado_id}** (\`${vendedor?.codigo_afil || '—'}\`)\n> Informe um novo código para substituir.`;
+    }
+
+    const modal = new ModalBuilder()
+      .setCustomId(`modal_vendedor_${pedidoId}`)
+      .setTitle('🤝 Código do Vendedor');
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('codigo')
+          .setLabel('Código do vendedor (deixe vazio para remover)')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setPlaceholder('Ex: AB12CD34')
+          .setMaxLength(20),
+      ),
+    );
+    return interaction.showModal(modal);
+  }
+
+  // ── Painel do afiliado (canal fixo) ──────────────────────────────────────────
+  if (id === 'afil_acessar_painel') {
+    const modal = new ModalBuilder().setCustomId('modal_afil_acesso').setTitle('🔑 Acessar Painel de Afiliado');
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('codigo')
+          .setLabel('Seu código de afiliado')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setPlaceholder('Ex: AB12CD34'),
+      ),
+    );
+    return interaction.showModal(modal);
+  }
+
+  if (id === 'afil_solicitar_saque') {
+    const { solicitarSaque } = require('../systems/afiliados');
+    return solicitarSaque(interaction);
+  }
+
+  if (id === 'afil_ver_historico') {
+    const { mostrarHistoricoAfiliado } = require('../systems/afiliados');
+    return mostrarHistoricoAfiliado(interaction);
+  }
+
   // ── Aplicar cupom no pedido ───────────────────────────────────────────────────
   if (id.startsWith('aplicar_cupom_')) {
     const pedidoId = id.replace('aplicar_cupom_', '');

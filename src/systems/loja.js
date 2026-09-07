@@ -557,9 +557,10 @@ async function entregarProduto(pedido, client) {
         addCoins(pedido.usuario_id, coinsCashback, `Cashback ${pct}% — Pedido ${pedido.id.slice(0,8).toUpperCase()}`);
       }
 
-      // Comissão afiliado
-      if (pedido.afiliado_id && pedido.comissao_afil > 0) {
-        Usuarios.addSaldo(pedido.afiliado_id, pedido.comissao_afil, `Comissão de venda — Pedido ${pedido.id.slice(0,8)}`);
+      // Comissão afiliado — usa sistema de 2 níveis
+      if (pedido.afiliado_id) {
+        const { distribuirComissoes } = require('./afiliados');
+        await distribuirComissoes(pedido, pedido.afiliado_id).catch(e => console.error('[Afiliados]', e.message));
       }
     }
 

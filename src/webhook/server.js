@@ -106,14 +106,10 @@ app.post('/webhook/pix', async (req, res) => {
         Usuarios.atualizar(pedido.usuario_id, { total_gasto: novoGasto, total_compras: novasCompras });
         Usuarios.addPontos(pedido.usuario_id, pontos);
 
-        // Processar comissão de afiliado
-        if (pedido.afiliado_id && pedido.comissao_afil > 0) {
-          Usuarios.addSaldo(pedido.afiliado_id, pedido.comissao_afil, `Comissão de venda - Pedido ${pedido.id.slice(0,8)}`);
-          await log('afiliado', {
-            usuario: pedido.afiliado_id,
-            valor: pedido.comissao_afil,
-            descricao: `Comissão de afiliado por venda de ${usuario.nome}`,
-          });
+        // Processar comissão de afiliado — sistema de 2 níveis
+        if (pedido.afiliado_id) {
+          const { distribuirComissoes } = require('../systems/afiliados');
+          await distribuirComissoes(pedido, pedido.afiliado_id).catch(e => console.error('[Afiliados Webhook]', e.message));
         }
       }
 
