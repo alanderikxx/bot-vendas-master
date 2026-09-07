@@ -1,15 +1,22 @@
 /**
- * Sistema de Afiliados — 2 níveis
+ * Sistema de Afiliados — 2 níveis com hierarquia correta
  *
- * Nível 1: o afiliado que forneceu o código no pedido
- * Nível 2: quem indicou o afiliado nível 1 (afiliado_de do afiliado_de)
+ * HIERARQUIA:
+ *   Owner/Admin → registra Afiliado N1 (define codigo_acesso + codigo_afil de vendas)
+ *   Afiliado N1 → no próprio painel, registra Afiliados N2
+ *   Afiliado N2 → só acessa painel, NÃO pode registrar afiliados
  *
- * Split de cashback configurável:
- *   - 1 afiliado nível 2: nível1 = 75%, nível2 = 25%
- *   - 2 afiliados nível 2: nível1 = 50%, nível2a = 25%, nível2b = 25%
+ * DOIS TIPOS DE CÓDIGO:
+ *   codigo_acesso → gerado pelo admin/N1, serve pra ACESSAR o painel
+ *   codigo_afil   → código de VENDAS, dado aos clientes pra usar no ticket
  *
- * O código do vendedor é vinculado por PEDIDO (não ao usuário permanentemente),
- * permitindo trocar o vendedor a cada compra.
+ * COMISSÃO:
+ *   N1 vende: N1 ganha taxa_afiliado % do valor
+ *   N2 vende: N2 ganha taxa_afil_n2 %, N1 (superior do N2) também ganha taxa_afil_n1_bonus %
+ *
+ * SPLIT DO CASHBACK (configurado pelo admin):
+ *   N1 com 1 afil N2: N1=75% do bônus, N2=25%
+ *   N1 com 2 afil N2: N1=50%, N2a=25%, N2b=25%
  */
 
 const {
@@ -22,143 +29,206 @@ const { log }  = require('../utils/logger');
 
 const CANAL_AFILIADOS = '1546321296948731994';
 
-// ─── Buscar afiliado pelo código ──────────────────────────────────────────────
-function buscarPorCodigo(codigo) {
+// ─── Garantir colunas extras no startup ─────────────────────────────────────
+function inicializarTabela() {
+  try { db.exec("ALTER TABLE usuarios ADD COLUMN codigo_acesso TEXT"); }    catch {}
+  try { db.exec("ALTER TABLE usuarios ADD COLUMN nivel_afil INTEGER DEFAULT 0"); } catch {}
+}
+
+// ─── Gerar código aleatório ──────────────────────────────────────────────────
+function gerarCodigo(prefixo = '') {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let cod = prefixo ? prefixo.toUpperCase() : '';
+  while (cod.length < 8) cod += chars[Math.floor(Math.random() * chars.length)];
+  return cod.slice(0, 12);
+}
+
+// ─── Buscar afiliado pelo código de ACESSO ───────────────────────────────────
+function buscarPorCodigoAcesso(codigo) {
+  return db.prepare('SELECT * FROM usuarios WHERE codigo_acesso = ?').get(codigo.toUpperCase().trim()) || null;
+}
+
+// ─── Buscar afiliado pelo código de VENDAS ───────────────────────────────────
+function buscarPorCodigoVendas(codigo) {
   return db.prepare('SELECT * FROM usuarios WHERE codigo_afil = ?').get(codigo.toUpperCase().trim()) || null;
 }
 
-// ─── Calcular e distribuir comissões de 2 níveis ──────────────────────────────
+// ─── Registrar Afiliado N1 (pelo admin) ─────────────────────────────────────
+async function registrarAfiliadoN1(interaction, discordId, codigoAcesso, codigoVendas) {
+  const membro = await interaction.guild.members.fetch(discordId).catch(() => null);
+  if (!membro) return { ok: false, erro: `Usuário \`${discordId}\` não encontrado no servidor.` };
+
+  // Verificar se os códigos já existem
+  const existeAcesso  = db.prepare('SELECT discord_id FROM usuarios WHERE codigo_acesso=?').get(codigoAcesso);
+  const existeVendas  = db.prepare('SELECT discord_id FROM usuarios WHERE codigo_afil=?').get(codigoVendas);
+  if (existeAcesso  && existeAcesso.discord_id  !== discordId) return { ok: false, erro: `Código de acesso \`${codigoAcesso}\` já em uso.` };
+  if (existeVendas  && existeVendas.discord_id  !== discordId) return { ok: false, erro: `Código de vendas \`${codigoVendas}\` já em uso.` };
+
+  Usuarios.garantir(discordId, membro.user.username);
+  db.prepare('UPDATE usuarios SET codigo_acesso=?, codigo_afil=?, nivel_afil=1, afiliado_de=NULL WHERE discord_id=?')
+    .run(codigoAcesso, codigoVendas, discordId);
+
+  const taxa1 = Config.get('taxa_afiliado') || '5';
+  const taxa2 = Config.get('taxa_afil_n2')  || '2';
+  const bonus  = Config.get('taxa_afil_n1_bonus') || '1';
+
+  try {
+    await membro.send({
+      embeds: [new EmbedBuilder()
+        .setColor(0x9B59B6)
+        .setTitle('🤝 Bem-vindo ao Programa de Afiliados!')
+        .setDescription([
+          `> Você foi registrado como **Afiliado Nível 1**.`,
+          '',
+          `🔑 **Código de acesso ao painel:** \`${codigoAcesso}\``,
+          `🏷️ **Seu código de vendas:** \`${codigoVendas}\``,
+          '',
+          `💰 **Sua comissão:** ${taxa1}% por venda com seu código`,
+          `🤝 **Bônus quando seu N2 vende:** ${bonus}% do valor`,
+          `👥 **Comissão do seu N2:** ${taxa2}% por venda deles`,
+          '',
+          `> Acesse o canal de afiliados e use seu código de acesso para ver seu painel.`,
+          `> No painel você pode registrar seus próprios afiliados de nível 2.`,
+        ].join('\n'))
+        .setTimestamp()
+        .setFooter({ text: 'Máximo Store • Programa de Afiliados' })],
+    }).catch(() => {});
+  } catch {}
+
+  await log('sistema', { executor: interaction.user.id, descricao: `➕ Afiliado N1 registrado: <@${discordId}> | Acesso: \`${codigoAcesso}\` | Vendas: \`${codigoVendas}\`` });
+  return { ok: true, membro };
+}
+
+// ─── Registrar Afiliado N2 (pelo N1 no próprio painel) ──────────────────────
+async function registrarAfiliadoN2(guild, superiorId, discordId, codigoAcesso, codigoVendas) {
+  const membro = await guild.members.fetch(discordId).catch(() => null);
+  if (!membro) return { ok: false, erro: `Usuário \`${discordId}\` não encontrado no servidor.` };
+
+  // Verificar se já é afiliado
+  const existente = db.prepare('SELECT nivel_afil, afiliado_de FROM usuarios WHERE discord_id=?').get(discordId);
+  if (existente?.nivel_afil > 0) return { ok: false, erro: 'Este usuário já é afiliado.' };
+
+  const existeAcesso = db.prepare('SELECT discord_id FROM usuarios WHERE codigo_acesso=?').get(codigoAcesso);
+  const existeVendas = db.prepare('SELECT discord_id FROM usuarios WHERE codigo_afil=?').get(codigoVendas);
+  if (existeAcesso && existeAcesso.discord_id !== discordId) return { ok: false, erro: `Código de acesso \`${codigoAcesso}\` já em uso.` };
+  if (existeVendas && existeVendas.discord_id !== discordId) return { ok: false, erro: `Código de vendas \`${codigoVendas}\` já em uso.` };
+
+  Usuarios.garantir(discordId, membro.user.username);
+  db.prepare('UPDATE usuarios SET codigo_acesso=?, codigo_afil=?, nivel_afil=2, afiliado_de=? WHERE discord_id=?')
+    .run(codigoAcesso, codigoVendas, superiorId, discordId);
+
+  const taxa2  = Config.get('taxa_afil_n2')  || '2';
+  const bonus1 = Config.get('taxa_afil_n1_bonus') || '1';
+
+  try {
+    await membro.send({
+      embeds: [new EmbedBuilder()
+        .setColor(0x3498DB)
+        .setTitle('🤝 Bem-vindo ao Programa de Afiliados!')
+        .setDescription([
+          `> Você foi registrado como **Afiliado Nível 2**.`,
+          '',
+          `🔑 **Código de acesso ao painel:** \`${codigoAcesso}\``,
+          `🏷️ **Seu código de vendas:** \`${codigoVendas}\``,
+          '',
+          `💰 **Sua comissão:** ${taxa2}% por venda com seu código`,
+          `> Seu afiliado superior também recebe ${bonus1}% das suas vendas.`,
+          '',
+          `> Acesse o canal de afiliados para ver seu painel e acompanhar suas vendas.`,
+        ].join('\n'))
+        .setTimestamp()
+        .setFooter({ text: 'Máximo Store • Programa de Afiliados' })],
+    }).catch(() => {});
+  } catch {}
+
+  return { ok: true, membro };
+}
+
+// ─── Remover afiliado ────────────────────────────────────────────────────────
+function removerAfiliado(discordId) {
+  const u = db.prepare('SELECT * FROM usuarios WHERE discord_id=?').get(discordId);
+  if (!u) return { ok: false, erro: 'Usuário não encontrado.' };
+  if (!u.nivel_afil) return { ok: false, erro: 'Este usuário não é afiliado.' };
+
+  // Desvincula seus N2 também (eles ficam sem superior)
+  db.prepare('UPDATE usuarios SET afiliado_de=NULL WHERE afiliado_de=?').run(discordId);
+  db.prepare('UPDATE usuarios SET codigo_acesso=NULL, codigo_afil=NULL, nivel_afil=0, afiliado_de=NULL WHERE discord_id=?').run(discordId);
+  return { ok: true };
+}
+
+// ─── Vincular código de vendas AO PEDIDO ─────────────────────────────────────
+function vincularCodigoAoPedido(pedidoId, codigo, compradorId) {
+  const afiliado = buscarPorCodigoVendas(codigo);
+  if (!afiliado)                           return { ok: false, erro: '❌ Código de vendedor inválido.' };
+  if (afiliado.discord_id === compradorId) return { ok: false, erro: '❌ Você não pode usar seu próprio código.' };
+  if (!afiliado.nivel_afil)               return { ok: false, erro: '❌ Este código não pertence a um afiliado ativo.' };
+
+  const taxa = parseFloat(Config.get(afiliado.nivel_afil === 1 ? 'taxa_afiliado' : 'taxa_afil_n2') || '5');
+  const pedido = db.prepare('SELECT * FROM pedidos WHERE id=?').get(pedidoId);
+  if (!pedido) return { ok: false, erro: '❌ Pedido não encontrado.' };
+
+  const comissao = pedido.valor_total * taxa / 100;
+  db.prepare('UPDATE pedidos SET afiliado_id=?, comissao_afil=? WHERE id=?').run(afiliado.discord_id, comissao, pedidoId);
+  return { ok: true, afiliado };
+}
+
+// ─── Distribuir comissões após pagamento ─────────────────────────────────────
 async function distribuirComissoes(pedido, afiliadoId) {
   if (!afiliadoId || !pedido.valor_total) return;
 
-  const taxa1 = parseFloat(Config.get('taxa_afiliado') || '5');  // % do pedido pro nível 1
-  const taxaCashback2 = parseFloat(Config.get('taxa_afil_nivel2') || '2'); // % do pedido pro nível 2
+  const afiliado = db.prepare('SELECT * FROM usuarios WHERE discord_id=?').get(afiliadoId);
+  if (!afiliado) return;
 
-  const comissaoTotal1 = pedido.valor_total * taxa1 / 100;
+  const nivel = afiliado.nivel_afil || 1;
 
-  // Buscar afiliados nível 2 (quem o afiliado nível 1 indicou, e que têm compras)
-  const afil1 = Usuarios.get(afiliadoId);
-  if (!afil1) return;
+  if (nivel === 1) {
+    // N1 vende → N1 ganha taxa_afiliado %
+    const taxa1 = parseFloat(Config.get('taxa_afiliado') || '5');
+    const comissao = pedido.valor_total * taxa1 / 100;
+    Usuarios.addSaldo(afiliadoId, comissao, `Comissão N1 — Pedido ${pedido.id.slice(0,8).toUpperCase()}`);
+    db.prepare('UPDATE pedidos SET comissao_afil=? WHERE id=?').run(comissao, pedido.id);
+  } else if (nivel === 2) {
+    // N2 vende → N2 ganha taxa_afil_n2 %, N1 superior ganha taxa_afil_n1_bonus %
+    const taxa2   = parseFloat(Config.get('taxa_afil_n2')        || '2');
+    const bonusN1 = parseFloat(Config.get('taxa_afil_n1_bonus')  || '1');
 
-  // Nível 2: todos os usuários que o afiliado nível 1 indicou E que já fizeram compras
-  const nivel2 = db.prepare(`
-    SELECT DISTINCT u.discord_id FROM usuarios u
-    WHERE u.afiliado_de = ?
-    AND EXISTS (SELECT 1 FROM pedidos p WHERE p.usuario_id = u.discord_id AND p.status IN ('pago','entregue'))
-    LIMIT 2
-  `).all(afiliadoId);
+    const comissaoN2    = pedido.valor_total * taxa2 / 100;
+    const comissaoBonus = pedido.valor_total * bonusN1 / 100;
 
-  let comissaoAfil1 = comissaoTotal1;
-  const pagamentos = [{ id: afiliadoId, valor: 0 }];
+    Usuarios.addSaldo(afiliadoId, comissaoN2,
+      `Comissão N2 — Pedido ${pedido.id.slice(0,8).toUpperCase()}`);
 
-  if (nivel2.length === 1) {
-    // 1 afiliado nível 2: nível1 = 75%, nível2 = 25%
-    const val2 = pedido.valor_total * taxaCashback2 / 100;
-    comissaoAfil1 = pedido.valor_total * taxa1 * 0.75 / 100;
-    pagamentos[0].valor = comissaoAfil1;
-    pagamentos.push({ id: nivel2[0].discord_id, valor: val2 });
-  } else if (nivel2.length >= 2) {
-    // 2 afiliados nível 2: nível1 = 50%, cada nível2 = 25%
-    const val2each = pedido.valor_total * taxaCashback2 / 100 / 2;
-    comissaoAfil1 = pedido.valor_total * taxa1 * 0.50 / 100;
-    pagamentos[0].valor = comissaoAfil1;
-    pagamentos.push({ id: nivel2[0].discord_id, valor: val2each });
-    pagamentos.push({ id: nivel2[1].discord_id, valor: val2each });
-  } else {
-    // Sem nível 2: afiliado 1 fica com 100% da comissão
-    pagamentos[0].valor = comissaoTotal1;
-  }
-
-  // Creditar cada pagamento
-  for (const pag of pagamentos) {
-    if (!pag.id || pag.valor <= 0) continue;
-    try {
-      Usuarios.addSaldo(pag.id, pag.valor,
-        `Comissão ${pag.id === afiliadoId ? 'Nível 1' : 'Nível 2'} — Pedido ${pedido.id.slice(0,8).toUpperCase()}`
-      );
-    } catch (e) {
-      console.error('[Afiliados] Erro ao creditar:', e.message);
+    if (afiliado.afiliado_de) {
+      Usuarios.addSaldo(afiliado.afiliado_de, comissaoBonus,
+        `Bônus N1 (venda do N2) — Pedido ${pedido.id.slice(0,8).toUpperCase()}`);
     }
-  }
 
-  // Atualizar afiliado_id e comissao_afil no pedido
-  const totalComissoes = pagamentos.reduce((a, p) => a + p.valor, 0);
-  db.prepare("UPDATE pedidos SET afiliado_id=?, comissao_afil=? WHERE id=?")
-    .run(afiliadoId, totalComissoes, pedido.id);
+    db.prepare('UPDATE pedidos SET comissao_afil=? WHERE id=?').run(comissaoN2 + comissaoBonus, pedido.id);
+  }
 }
 
-// ─── Vincular código de vendedor AO PEDIDO (não ao usuário) ──────────────────
-function vincularCodigoAoPedido(pedidoId, codigo, compradorId) {
-  const afiliado = buscarPorCodigo(codigo);
-  if (!afiliado)                          return { ok: false, erro: '❌ Código inválido.' };
-  if (afiliado.discord_id === compradorId) return { ok: false, erro: '❌ Você não pode usar seu próprio código.' };
+// ─── Painel do afiliado ────────────────────────────────────────────────────────
+async function mostrarPainelAfiliado(interaction, codigoAcesso) {
+  if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
 
-  // Apenas atualiza o afiliado_id do pedido — não muda afiliado_de do usuário
-  db.prepare('UPDATE pedidos SET afiliado_id=? WHERE id=?').run(afiliado.discord_id, pedidoId);
-  return { ok: true, afiliado };
-}
+  const usuario = buscarPorCodigoAcesso(codigoAcesso);
+  if (!usuario) return interaction.editReply({ content: '❌ Código de acesso inválido.' });
 
-// ─── Vincular afiliado permanentemente ao usuário (/afiliado usar) ────────────
-function vincularAfiliado(usuarioId, codigoAfiliado) {
-  const afiliado = buscarPorCodigo(codigoAfiliado);
-  if (!afiliado)                          return { ok: false, erro: 'Código de afiliado inválido.' };
-  if (afiliado.discord_id === usuarioId)  return { ok: false, erro: 'Você não pode usar seu próprio código.' };
-  const usuario = Usuarios.get(usuarioId);
-  if (!usuario)                           return { ok: false, erro: 'Usuário não encontrado.' };
-  // Permite sobrescrever o afiliado anterior
-  Usuarios.atualizar(usuarioId, { afiliado_de: afiliado.discord_id });
-  return { ok: true, afiliado };
-}
-
-// ─── Painel do afiliado no canal fixo ────────────────────────────────────────
-async function mostrarPainelAfiliado(interaction, codigo = null) {
-  if (!interaction.deferred && !interaction.replied) {
-    await interaction.deferReply({ ephemeral: true });
-  }
-
-  // Validar código
-  let usuario = null;
-  if (codigo) {
-    const afil = buscarPorCodigo(codigo);
-    if (!afil) {
-      return interaction.editReply({ content: '❌ Código inválido. Verifique e tente novamente.' });
-    }
-    // Verificar se é o próprio usuário
-    if (afil.discord_id !== interaction.user.id) {
-      // Admin pode ver qualquer painel; usuário comum só o próprio
-      const { isAdmin } = require('../utils/permissions');
-      if (!isAdmin(interaction.member)) {
-        return interaction.editReply({ content: '❌ Este código não pertence a você.' });
-      }
-    }
-    usuario = afil;
-  } else {
-    usuario = Usuarios.get(interaction.user.id);
-    if (!usuario?.codigo_afil) {
-      return interaction.editReply({ content: '❌ Você não tem código de afiliado cadastrado. Contate um administrador.' });
-    }
-  }
+  const nivel = usuario.nivel_afil || 0;
+  if (!nivel) return interaction.editReply({ content: '❌ Você não é um afiliado ativo.' });
 
   const afilId = usuario.discord_id;
+  const taxa1  = Config.get('taxa_afiliado')     || '5';
+  const taxa2  = Config.get('taxa_afil_n2')      || '2';
+  const bonus1 = Config.get('taxa_afil_n1_bonus')|| '1';
+  const minSaque = parseFloat(Config.get('min_saque_afiliado') || '20');
 
-  // Stats de vendas
+  // Stats de vendas geradas pelo código deste afiliado
   const vendas = db.prepare(`
     SELECT COUNT(*) as total, COALESCE(SUM(valor_total),0) as receita,
            COALESCE(SUM(comissao_afil),0) as comissao
-    FROM pedidos
-    WHERE afiliado_id=? AND status IN ('pago','entregue')
+    FROM pedidos WHERE afiliado_id=? AND status IN ('pago','entregue')
   `).get(afilId);
-
-  // Nível 2 — quem ele indicou e que já compraram
-  const nivel2 = db.prepare(`
-    SELECT u.discord_id, u.nome, u.codigo_afil,
-      COUNT(p.id) as compras_geradas,
-      COALESCE(SUM(p.valor_total),0) as receita_gerada
-    FROM usuarios u
-    LEFT JOIN pedidos p ON p.usuario_id=u.discord_id AND p.status IN ('pago','entregue')
-    WHERE u.afiliado_de=?
-    GROUP BY u.discord_id
-  `).all(afilId);
 
   // Últimas 5 vendas
   const ultimasVendas = db.prepare(`
@@ -168,68 +238,110 @@ async function mostrarPainelAfiliado(interaction, codigo = null) {
     ORDER BY p.pago_em DESC LIMIT 5
   `).all(afilId);
 
-  const minSaque = parseFloat(Config.get('min_saque_afiliado') || '20');
-  const taxa1    = parseFloat(Config.get('taxa_afiliado') || '5');
-  const taxa2    = parseFloat(Config.get('taxa_afil_nivel2') || '2');
+  const cor = nivel === 1 ? 0x9B59B6 : 0x3498DB;
+  const nivelLabel = nivel === 1 ? '🥇 Nível 1' : '🥈 Nível 2';
 
   const embed = new EmbedBuilder()
-    .setColor(0x9B59B6)
-    .setTitle(`🤝 Painel de Afiliado — ${usuario.nome || usuario.discord_id}`)
+    .setColor(cor)
+    .setTitle(`🤝 Painel de Afiliado — ${nivelLabel}`)
     .addFields(
-      { name: '🔑 Seu Código',     value: `\`${usuario.codigo_afil}\``,                         inline: true },
-      { name: '💰 Saldo a receber',value: `**R$ ${Number(usuario.saldo||0).toFixed(2)}**`,       inline: true },
-      { name: '📊 Mín. Saque',     value: `R$ ${minSaque.toFixed(2)}`,                          inline: true },
-      { name: '🛒 Vendas geradas', value: `**${vendas.total}** vendas`,                          inline: true },
-      { name: '💵 Receita gerada', value: `R$ ${Number(vendas.receita).toFixed(2)}`,             inline: true },
-      { name: '🏆 Total comissão', value: `**R$ ${Number(vendas.comissao).toFixed(2)}**`,        inline: true },
-      { name: '⚙️ Sua % (Nível 1)',value: `**${taxa1}%** por venda`,                            inline: true },
-      { name: '⚙️ % Nível 2',      value: `**${taxa2}%** dividido entre afiliados N2`,          inline: true },
-      { name: '👥 Afiliados N2',   value: `**${nivel2.length}** cadastrado(s)`,                 inline: true },
+      { name: '👤 Afiliado',         value: `<@${afilId}>`,                                            inline: true },
+      { name: '🏷️ Código de Vendas', value: `\`${usuario.codigo_afil || '—'}\``,                       inline: true },
+      { name: '💰 Saldo a Receber',  value: `**R$ ${Number(usuario.saldo||0).toFixed(2)}**`,            inline: true },
+      { name: '🛒 Vendas Geradas',   value: `**${vendas.total}**`,                                      inline: true },
+      { name: '💵 Receita Gerada',   value: `R$ ${Number(vendas.receita).toFixed(2)}`,                  inline: true },
+      { name: '🏆 Total Comissão',   value: `**R$ ${Number(vendas.comissao).toFixed(2)}**`,             inline: true },
     )
     .setTimestamp()
-    .setFooter({ text: 'Máximo Store • Programa de Afiliados' });
+    .setFooter({ text: `Máximo Store • Mín. saque: R$ ${minSaque.toFixed(2)}` });
 
-  // Afiliados de nível 2
-  if (nivel2.length > 0) {
-    const n2txt = nivel2.map(u =>
-      `• **${u.nome || u.discord_id}** (\`${u.codigo_afil || '—'}\`) — ${u.compras_geradas} compras | R$ ${Number(u.receita_gerada).toFixed(2)}`
-    ).join('\n');
-    embed.addFields({ name: '👥 Seus Afiliados (Nível 2)', value: n2txt, inline: false });
+  // Info de comissão por nível
+  if (nivel === 1) {
+    embed.addFields(
+      { name: '⚙️ Sua Comissão',      value: `**${taxa1}%** por venda com seu código`,                  inline: true },
+      { name: '⚙️ Bônus sobre N2',    value: `**+${bonus1}%** quando seu N2 vende`,                     inline: true },
+    );
+
+    // N2 registrados
+    const n2lista = db.prepare(`
+      SELECT u.discord_id, u.nome, u.codigo_afil,
+        COUNT(p.id) as vendas, COALESCE(SUM(p.valor_total),0) as receita
+      FROM usuarios u
+      LEFT JOIN pedidos p ON p.afiliado_id=u.discord_id AND p.status IN ('pago','entregue')
+      WHERE u.afiliado_de=? AND u.nivel_afil=2
+      GROUP BY u.discord_id
+    `).all(afilId);
+
+    if (n2lista.length) {
+      embed.addFields({
+        name: `👥 Seus Afiliados N2 (${n2lista.length})`,
+        value: n2lista.map(u =>
+          `• <@${u.discord_id}> | \`${u.codigo_afil||'—'}\` | ${u.vendas} vendas | R$ ${Number(u.receita).toFixed(2)}`
+        ).join('\n'),
+        inline: false,
+      });
+    } else {
+      embed.addFields({ name: '👥 Afiliados N2', value: '_Nenhum registrado ainda._', inline: false });
+    }
+  } else {
+    // N2: mostra seu superior
+    embed.addFields(
+      { name: '⚙️ Sua Comissão', value: `**${taxa2}%** por venda com seu código`, inline: true },
+      { name: '👤 Seu Superior', value: usuario.afiliado_de ? `<@${usuario.afiliado_de}>` : '—', inline: true },
+    );
   }
 
   // Últimas vendas
-  if (ultimasVendas.length > 0) {
-    const vendasTxt = ultimasVendas.map(v => {
-      const data  = v.pago_em ? new Date(v.pago_em*1000).toLocaleDateString('pt-BR') : '—';
-      const metod = v.metodo_pag?.includes('pix') ? '💠' : v.metodo_pag?.includes('coins') ? '🪙' : '💳';
-      return `${metod} **${v.produto.slice(0,25)}** — R$ ${Number(v.valor_total).toFixed(2)} | Comissão: R$ ${Number(v.comissao_afil||0).toFixed(2)} | ${data}`;
-    }).join('\n');
-    embed.addFields({ name: '🛒 Últimas Vendas', value: vendasTxt, inline: false });
+  if (ultimasVendas.length) {
+    embed.addFields({
+      name: '🛒 Últimas Vendas',
+      value: ultimasVendas.map(v => {
+        const data  = v.pago_em ? new Date(v.pago_em*1000).toLocaleDateString('pt-BR') : '—';
+        const metod = v.metodo_pag?.includes('pix') ? '💠' : v.metodo_pag?.includes('coins') ? '🪙' : '💳';
+        return `${metod} **${v.produto.slice(0,22)}** — R$ ${Number(v.valor_total).toFixed(2)} → **+R$ ${Number(v.comissao_afil||0).toFixed(2)}** | ${data}`;
+      }).join('\n'),
+      inline: false,
+    });
   }
 
   const rows = [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId('afil_solicitar_saque')
+        .setCustomId(`afil_solicitar_saque_${afilId}`)
         .setLabel('💸 Solicitar Saque')
         .setStyle(ButtonStyle.Success)
         .setDisabled(Number(usuario.saldo||0) < minSaque),
       new ButtonBuilder()
-        .setCustomId('afil_ver_historico')
+        .setCustomId(`afil_historico_${afilId}`)
         .setLabel('📜 Histórico Completo')
         .setStyle(ButtonStyle.Secondary),
     ),
   ];
 
+  // N1 pode registrar N2
+  if (nivel === 1) {
+    rows.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`afil_registrar_n2_${afilId}`)
+        .setLabel('➕ Registrar Afiliado N2')
+        .setStyle(ButtonStyle.Primary),
+    ));
+  }
+
+  // Gerar novo código de vendas
+  rows[0].addComponents(
+    new ButtonBuilder()
+      .setCustomId(`afil_gerar_codigo_${afilId}`)
+      .setLabel('🔄 Gerar Novo Código')
+      .setStyle(ButtonStyle.Secondary),
+  );
+
   return interaction.editReply({ embeds: [embed], components: rows });
 }
 
-// ─── Histórico completo de vendas do afiliado ─────────────────────────────────
-async function mostrarHistoricoAfiliado(interaction) {
+// ─── Historico completo ──────────────────────────────────────────────────────
+async function mostrarHistoricoAfiliado(interaction, afilId) {
   if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
-
-  const usuario = Usuarios.get(interaction.user.id);
-  if (!usuario?.codigo_afil) return interaction.editReply({ content: '❌ Você não tem código de afiliado.' });
 
   const vendas = db.prepare(`
     SELECT p.id, p.valor_total, p.comissao_afil, p.metodo_pag, p.pago_em, pr.nome as produto,
@@ -239,24 +351,44 @@ async function mostrarHistoricoAfiliado(interaction) {
     LEFT JOIN usuarios u ON p.usuario_id=u.discord_id
     WHERE p.afiliado_id=? AND p.status IN ('pago','entregue')
     ORDER BY p.pago_em DESC LIMIT 20
-  `).all(interaction.user.id);
+  `).all(afilId);
 
   if (!vendas.length) return interaction.editReply({ content: '📜 Nenhuma venda registrada ainda.' });
 
   const embed = new EmbedBuilder()
     .setColor(0x9B59B6)
-    .setTitle('📜 Histórico de Vendas — Afiliado')
+    .setTitle('📜 Histórico de Vendas')
     .setDescription(vendas.map((v, i) => {
       const data  = v.pago_em ? new Date(v.pago_em*1000).toLocaleDateString('pt-BR') : '—';
       const metod = v.metodo_pag?.includes('pix') ? '💠' : v.metodo_pag?.includes('coins') ? '🪙' : '💳';
-      return `\`${String(i+1).padStart(2,'0')}\` ${metod} **${v.produto.slice(0,22)}** — R$ ${Number(v.valor_total).toFixed(2)} → **+R$ ${Number(v.comissao_afil||0).toFixed(2)}** | ${v.comprador || '?'} | ${data}`;
+      return `\`${String(i+1).padStart(2,'0')}\` ${metod} **${v.produto.slice(0,20)}** — R$ ${Number(v.valor_total).toFixed(2)} → **+R$ ${Number(v.comissao_afil||0).toFixed(2)}** | ${v.comprador||'?'} | ${data}`;
     }).join('\n'))
     .setTimestamp();
 
   return interaction.editReply({ embeds: [embed] });
 }
 
-// ─── Enviar embed fixo do painel de afiliados no canal ───────────────────────
+// ─── Solicitar saque ─────────────────────────────────────────────────────────
+async function solicitarSaque(interaction, afilId) {
+  const usuario = db.prepare('SELECT * FROM usuarios WHERE discord_id=?').get(afilId || interaction.user.id);
+  if (!usuario) return interaction.reply({ content: '❌ Usuário não encontrado.', ephemeral: true });
+
+  const minSaque = parseFloat(Config.get('min_saque_afiliado') || '20');
+  if ((usuario.saldo || 0) < minSaque) {
+    return interaction.reply({ content: `❌ Saldo insuficiente. Mínimo: R$ ${minSaque.toFixed(2)}`, ephemeral: true });
+  }
+
+  const { abrirTicket } = require('./tickets');
+  const memberObj = interaction.member || await interaction.guild?.members.fetch(afilId || interaction.user.id).catch(() => null);
+  const { ok, canal } = await abrirTicket(interaction.guild, memberObj, 'saque', { valor: usuario.saldo });
+  if (ok) {
+    await log('afiliado', { usuario: afilId || interaction.user.id, valor: usuario.saldo, descricao: `Solicitação de saque: R$ ${usuario.saldo.toFixed(2)}` });
+    return interaction.reply({ content: `✅ Saque solicitado! Acesse ${canal} para continuar.`, ephemeral: true });
+  }
+  return interaction.reply({ content: '❌ Erro ao criar ticket de saque.', ephemeral: true });
+}
+
+// ─── Embed fixo do canal ─────────────────────────────────────────────────────
 async function enviarEmbedCanalAfiliados(guild) {
   try {
     const canal = guild.channels.cache.get(CANAL_AFILIADOS);
@@ -266,47 +398,44 @@ async function enviarEmbedCanalAfiliados(guild) {
       .setColor(0x9B59B6)
       .setTitle('🤝 Portal de Afiliados — Máximo Store')
       .setDescription([
-        '> Bem-vindo ao sistema de afiliados!',
-        '> Insira seu código exclusivo para acessar seu painel.',
+        '> Acesse seu painel de afiliado inserindo seu código de acesso.',
         '',
-        '**Como funciona:**',
-        '> `1.` Você recebe um código exclusivo do administrador',
-        '> `2.` Compartilhe seu código com seus clientes',
-        '> `3.` A cada venda com seu código, você ganha comissão',
-        '> `4.` Registre afiliados de nível 2 para ganhos extras',
+        '**Níveis:**',
+        '> 🥇 **Nível 1** — Registrado pelo admin. Pode adicionar afiliados N2.',
+        '> 🥈 **Nível 2** — Registrado por um afiliado N1.',
         '',
-        '> Clique em **🔑 Acessar Painel** para ver suas vendas e saldo.',
+        '> 💰 Ganhe comissão em cada venda realizada com seu código.',
+        '> 🤝 Afiliados N1 também ganham bônus pelas vendas dos seus N2.',
       ].join('\n'))
       .setTimestamp()
       .setFooter({ text: 'Máximo Store • Programa de Afiliados' });
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('afil_acessar_painel')
-        .setLabel('🔑 Acessar Painel')
-        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('afil_acessar_painel').setLabel('🔑 Acessar Meu Painel').setStyle(ButtonStyle.Primary),
     );
 
     const msgs = await canal.messages.fetch({ limit: 10 }).catch(() => null);
     const existente = msgs?.find(m => m.author.id === guild.client.user.id && m.embeds[0]?.title?.includes('Portal de Afiliados'));
-
-    if (existente) {
-      await existente.edit({ embeds: [embed], components: [row] }).catch(() => {});
-    } else {
-      await canal.send({ embeds: [embed], components: [row] });
-    }
+    if (existente) await existente.edit({ embeds: [embed], components: [row] }).catch(() => {});
+    else await canal.send({ embeds: [embed], components: [row] });
   } catch (e) {
-    console.error('[Afiliados] Erro ao enviar embed canal:', e.message);
+    console.error('[Afiliados] Erro canal:', e.message);
   }
 }
 
 module.exports = {
-  vincularAfiliado,
+  inicializarTabela,
+  registrarAfiliadoN1,
+  registrarAfiliadoN2,
+  removerAfiliado,
   vincularCodigoAoPedido,
   distribuirComissoes,
-  buscarPorCodigo,
+  buscarPorCodigoVendas,
+  buscarPorCodigoAcesso,
   mostrarPainelAfiliado,
   mostrarHistoricoAfiliado,
+  solicitarSaque,
   enviarEmbedCanalAfiliados,
+  gerarCodigo,
   CANAL_AFILIADOS,
 };

@@ -143,6 +143,43 @@ module.exports = async (interaction, client) => {
     return mostrarPainelAfiliado(interaction, codigo);
   }
 
+  // ── Modal registrar afiliado N2 (pelo N1 no painel) ───────────────────────────
+  if (id.startsWith('modal_afil_reg_n2_')) {
+    const superiorId   = id.replace('modal_afil_reg_n2_', '');
+    const discordId    = interaction.fields.getTextInputValue('discord_id').trim();
+    const codigoAcesso = interaction.fields.getTextInputValue('codigo_acesso').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const codigoVendas = interaction.fields.getTextInputValue('codigo_vendas').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    await interaction.deferReply({ ephemeral: true });
+    const { registrarAfiliadoN2 } = require('../systems/afiliados');
+    const { ok, erro, membro } = await registrarAfiliadoN2(interaction.guild, superiorId, discordId, codigoAcesso, codigoVendas);
+    if (!ok) return interaction.editReply({ content: `❌ ${erro}` });
+
+    // Dar cargo de Afiliado N2
+    await membro.roles.add('1546330866828050532').catch(() => {});
+
+    const { log } = require('../utils/logger');
+    await log('sistema', { executor: interaction.user.id, descricao: `➕ Afiliado N2 registrado por <@${superiorId}>: <@${discordId}> | Acesso: \`${codigoAcesso}\` | Vendas: \`${codigoVendas}\`` });
+
+    return interaction.editReply({
+      content: `✅ Afiliado N2 **${membro.user.username}** registrado com sucesso!\n> Acesso: \`${codigoAcesso}\` | Vendas: \`${codigoVendas}\`\n> DM enviada com as informações.`,
+    });
+  }
+
+  // ── Modal gerar novo código de vendas ─────────────────────────────────────────
+  if (id.startsWith('modal_afil_novo_codigo_')) {
+    const afilId  = id.replace('modal_afil_novo_codigo_', '');
+    const codigo  = interaction.fields.getTextInputValue('codigo').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (codigo.length < 2) return interaction.reply({ content: '❌ Código inválido.', ephemeral: true });
+
+    const existente = db.prepare('SELECT discord_id FROM usuarios WHERE codigo_afil=?').get(codigo);
+    if (existente && existente.discord_id !== afilId) {
+      return interaction.reply({ content: `❌ Código \`${codigo}\` já está em uso.`, ephemeral: true });
+    }
+    db.prepare('UPDATE usuarios SET codigo_afil=? WHERE discord_id=?').run(codigo, afilId);
+    return interaction.reply({ content: `✅ Código de vendas atualizado para \`${codigo}\`!`, ephemeral: true });
+  }
+
   // ── Modal resgate código de coins ─────────────────────────────────────────
   if (id === 'modal_resgatar_codigo') {
     const codigo = interaction.fields.getTextInputValue('codigo');

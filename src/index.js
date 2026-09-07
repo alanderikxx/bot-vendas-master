@@ -166,9 +166,10 @@ client.once('clientReady', async () => {
         console.log(`✅ Painéis atualizados.`);
       } catch (e) { console.error('[Init Painéis]', e.message); }
 
-      // Enviar embed do canal de afiliados
+      // Inicializar tabela de afiliados (adicionar colunas se não existirem)
       try {
-        const { enviarEmbedCanalAfiliados } = require('./systems/afiliados');
+        const { inicializarTabela, enviarEmbedCanalAfiliados } = require('./systems/afiliados');
+        inicializarTabela();
         await enviarEmbedCanalAfiliados(guild);
       } catch (e) { console.error('[Init Afiliados]', e.message); }
 

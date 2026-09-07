@@ -359,41 +359,53 @@ function buildConfigMenu() {
 
 // ─── Menu Afiliados (Admin+) ──────────────────────────────────────────────────
 function buildAfiliadosMenu() {
-  const totalAfil  = db.prepare("SELECT COUNT(*) as c FROM usuarios WHERE codigo_afil IS NOT NULL").get().c;
-  const comissPend = db.prepare("SELECT COALESCE(SUM(saldo),0) as t FROM usuarios WHERE saldo > 0").get().t;
+  const totalAfil  = db.prepare("SELECT COUNT(*) as c FROM usuarios WHERE nivel_afil > 0").get()?.c || 0;
+  const totalN1    = db.prepare("SELECT COUNT(*) as c FROM usuarios WHERE nivel_afil = 1").get()?.c || 0;
+  const totalN2    = db.prepare("SELECT COUNT(*) as c FROM usuarios WHERE nivel_afil = 2").get()?.c || 0;
+  const comissPend = db.prepare("SELECT COALESCE(SUM(saldo),0) as t FROM usuarios WHERE saldo > 0 AND nivel_afil > 0").get().t;
   const vendasAfil = db.prepare("SELECT COUNT(*) as c, COALESCE(SUM(comissao_afil),0) as t FROM pedidos WHERE afiliado_id IS NOT NULL AND status IN ('pago','entregue')").get();
-  const saquesPend = db.prepare("SELECT COUNT(*) as c FROM reembolsos WHERE status='pendente' AND tipo='saque_afiliado'").get()?.c || 0;
+
+  const taxa1  = Config.get('taxa_afiliado')      || '5';
+  const taxa2  = Config.get('taxa_afil_n2')       || '2';
+  const bonus1 = Config.get('taxa_afil_n1_bonus') || '1';
 
   const embed = new EmbedBuilder()
     .setColor(0x9B59B6)
     .setTitle('🤝 Painel — Afiliados')
     .setDescription('> Gerencie o programa de afiliados, comissões e saques.')
     .addFields(
-      { name: '👥 Afiliados',          value: `**${totalAfil}**`,                                            inline: true },
-      { name: '💰 Saldo a pagar',      value: `**R$ ${Number(comissPend).toFixed(2)}**`,                     inline: true },
+      { name: '👥 Total Afiliados',    value: `**${totalAfil}** (N1: ${totalN1} | N2: ${totalN2})`, inline: true },
+      { name: '💰 Saldo a pagar',      value: `**R$ ${Number(comissPend).toFixed(2)}**`,             inline: true },
       { name: '🛒 Vendas c/ afiliado', value: `**${vendasAfil.c}** • R$ ${Number(vendasAfil.t).toFixed(2)}`, inline: true },
-      { name: '💸 Saques pendentes',   value: saquesPend > 0 ? `⚠️ **${saquesPend}**` : '✅ Nenhum',        inline: true },
+      { name: '⚙️ % Comissão N1',     value: `**${taxa1}%** por venda`,                             inline: true },
+      { name: '⚙️ % Comissão N2',     value: `**${taxa2}%** por venda`,                             inline: true },
+      { name: '⚙️ Bônus N1 (N2 vende)', value: `**+${bonus1}%** ao N1 superior`,                   inline: true },
     )
     .setFooter({ text: 'Máximo Store • Afiliados' })
     .setTimestamp();
 
   const row1 = new ActionRowBuilder().addComponents(
-    btn('pa_afil_top',           '🏆 Top Afiliados',    ButtonStyle.Primary),
-    btn('pa_afil_saques',        '💸 Ver Saques',       saquesPend > 0 ? ButtonStyle.Danger : ButtonStyle.Secondary),
-    btn('pa_afil_pagar_saque',   '✅ Pagar Saque',      ButtonStyle.Success),
-    btn('pa_afil_rejeitar_saque','❌ Rejeitar Saque',   ButtonStyle.Danger),
-    btn('pa_afil_buscar',        '🔍 Buscar',           ButtonStyle.Secondary),
+    btn('pa_afil_top',           '🏆 Top',             ButtonStyle.Primary),
+    btn('pa_afil_saques',        '💸 Saques',          ButtonStyle.Secondary),
+    btn('pa_afil_pagar_saque',   '✅ Pagar',           ButtonStyle.Success),
+    btn('pa_afil_rejeitar_saque','❌ Rejeitar',        ButtonStyle.Danger),
+    btn('pa_afil_buscar',        '🔍 Buscar',          ButtonStyle.Secondary),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_afil_registrar',     '➕ Registrar',        ButtonStyle.Success),
-    btn('pa_afil_cfg_comissao',  '⚙️ % N1',             ButtonStyle.Secondary),
-    btn('pa_afil_cfg_nivel2',    '⚙️ % N2',             ButtonStyle.Secondary),
-    btn('pa_afil_cfg_min_saque', '⚙️ Mín. Saque',       ButtonStyle.Secondary),
-    btn('pa_home',               '🔙 Voltar',           ButtonStyle.Secondary),
+    btn('pa_afil_registrar',     '➕ Registrar N1',    ButtonStyle.Success),
+    btn('pa_afil_remover',       '🗑️ Remover',        ButtonStyle.Danger),
+    btn('pa_afil_cfg_comissao',  '⚙️ % N1',           ButtonStyle.Secondary),
+    btn('pa_afil_cfg_nivel2',    '⚙️ % N2',           ButtonStyle.Secondary),
+    btn('pa_afil_cfg_bonus',     '⚙️ Bônus N1',       ButtonStyle.Secondary),
   );
 
-  return { embed, components: [row1, row2] };
+  const row3 = new ActionRowBuilder().addComponents(
+    btn('pa_afil_cfg_min_saque', '⚙️ Mín. Saque',     ButtonStyle.Secondary),
+    btn('pa_home',               '🔙 Voltar',          ButtonStyle.Secondary),
+  );
+
+  return { embed, components: [row1, row2, row3] };
 }
 
 async function enviarPainelFixo(guild) {
@@ -635,10 +647,9 @@ async function handlePainelAdmin(interaction, client) {
   if (id === 'pa_afil_cfg_comissao') {
     if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
     const atual = Config.get('taxa_afiliado') || '5';
-    const modal = new ModalBuilder().setCustomId('pam_afil_cfg_comissao').setTitle('⚙️ % Comissão Nível 1');
+    const modal = new ModalBuilder().setCustomId('pam_afil_cfg_comissao').setTitle('⚙️ Comissão N1');
     modal.addComponents(
-      mRow(new TextInputBuilder().setCustomId('pct').setLabel('% comissão por venda (Nível 1)').setStyle(TextInputStyle.Short).setRequired(true)
-        .setValue(String(atual)).setPlaceholder('Ex: 5')),
+      mRow(new TextInputBuilder().setCustomId('pct').setLabel('% comissão por venda (Nível 1)').setStyle(TextInputStyle.Short).setRequired(true).setValue(String(atual)).setPlaceholder('Ex: 5')),
     );
     return interaction.showModal(modal);
   }
@@ -648,29 +659,47 @@ async function handlePainelAdmin(interaction, client) {
     const atual = Config.get('min_saque_afiliado') || '20';
     const modal = new ModalBuilder().setCustomId('pam_afil_cfg_min_saque').setTitle('⚙️ Mínimo para Saque');
     modal.addComponents(
-      mRow(new TextInputBuilder().setCustomId('valor').setLabel('Valor mínimo em R$ para solicitar saque').setStyle(TextInputStyle.Short).setRequired(true)
-        .setValue(String(atual)).setPlaceholder('Ex: 20.00')),
+      mRow(new TextInputBuilder().setCustomId('valor').setLabel('Valor mínimo em R$ para saque').setStyle(TextInputStyle.Short).setRequired(true).setValue(String(atual)).setPlaceholder('Ex: 20.00')),
     );
     return interaction.showModal(modal);
   }
 
   if (id === 'pa_afil_cfg_nivel2') {
     if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
-    const atual = Config.get('taxa_afil_nivel2') || '2';
-    const modal = new ModalBuilder().setCustomId('pam_afil_cfg_nivel2').setTitle('⚙️ % Comissão Nível 2');
+    const atual = Config.get('taxa_afil_n2') || '2';
+    const modal = new ModalBuilder().setCustomId('pam_afil_cfg_nivel2').setTitle('⚙️ Comissão N2');
     modal.addComponents(
-      mRow(new TextInputBuilder().setCustomId('pct').setLabel('% do pedido para afiliados de nível 2').setStyle(TextInputStyle.Short).setRequired(true)
-        .setValue(String(atual)).setPlaceholder('Ex: 2 (dividido entre os afiliados N2)')),
+      mRow(new TextInputBuilder().setCustomId('pct').setLabel('% comissão por venda (Nível 2)').setStyle(TextInputStyle.Short).setRequired(true).setValue(String(atual)).setPlaceholder('Ex: 2')),
+    );
+    return interaction.showModal(modal);
+  }
+
+  if (id === 'pa_afil_cfg_bonus') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const atual = Config.get('taxa_afil_n1_bonus') || '1';
+    const modal = new ModalBuilder().setCustomId('pam_afil_cfg_bonus').setTitle('⚙️ Bônus N1 quando N2 vende');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('pct').setLabel('% que N1 ganha quando seu N2 vende').setStyle(TextInputStyle.Short).setRequired(true).setValue(String(atual)).setPlaceholder('Ex: 1')),
     );
     return interaction.showModal(modal);
   }
 
   if (id === 'pa_afil_registrar') {
     if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
-    const modal = new ModalBuilder().setCustomId('pam_afil_registrar').setTitle('➕ Registrar Afiliado');
+    const modal = new ModalBuilder().setCustomId('pam_afil_registrar').setTitle('➕ Registrar Afiliado N1');
     modal.addComponents(
       mRow(new TextInputBuilder().setCustomId('discord_id').setLabel('Discord ID do afiliado').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 1234567890123456789')),
-      mRow(new TextInputBuilder().setCustomId('codigo').setLabel('Código personalizado (único)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: ALAN2025').setMaxLength(20)),
+      mRow(new TextInputBuilder().setCustomId('codigo_acesso').setLabel('Código de acesso ao painel (único)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: ACESSO2025').setMaxLength(20)),
+      mRow(new TextInputBuilder().setCustomId('codigo_vendas').setLabel('Código de vendas (para o ticket)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: ALAN10').setMaxLength(20)),
+    );
+    return interaction.showModal(modal);
+  }
+
+  if (id === 'pa_afil_remover') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_afil_remover').setTitle('🗑️ Remover Afiliado');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('discord_id').setLabel('Discord ID do afiliado').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 1234567890123456789')),
     );
     return interaction.showModal(modal);
   }
@@ -2560,20 +2589,22 @@ async function handlePainelAdminModals(interaction, client) {
   if (id === 'pam_afil_buscar') {
     await interaction.deferReply({ ephemeral: true });
     const busca = interaction.fields.getTextInputValue('discord_id').trim();
-    const u = db.prepare('SELECT * FROM usuarios WHERE discord_id=? OR codigo_afil=?').get(busca, busca.toUpperCase());
+    const u = db.prepare('SELECT * FROM usuarios WHERE discord_id=? OR codigo_afil=? OR codigo_acesso=?').get(busca, busca.toUpperCase(), busca.toUpperCase());
     if (!u) return interaction.editReply({ content: '❌ Afiliado não encontrado.' });
     const vendas = db.prepare("SELECT COUNT(*) as c, COALESCE(SUM(comissao_afil),0) as t FROM pedidos WHERE afiliado_id=? AND status IN ('pago','entregue')").get(u.discord_id);
-    const indicados = db.prepare('SELECT COUNT(*) as c FROM usuarios WHERE afiliado_de=?').get(u.discord_id).c;
+    const n2count = db.prepare('SELECT COUNT(*) as c FROM usuarios WHERE afiliado_de=? AND nivel_afil=2').get(u.discord_id).c;
+    const nivelLabel = u.nivel_afil === 1 ? '🥇 Nível 1' : u.nivel_afil === 2 ? '🥈 Nível 2' : '❌ Não afiliado';
     const embed = new EmbedBuilder()
       .setColor(0x9B59B6)
       .setTitle(`🤝 Afiliado — ${u.nome || u.discord_id}`)
       .addFields(
-        { name: '🔑 Código',        value: `\`${u.codigo_afil || '—'}\``,                       inline: true },
-        { name: '💰 Saldo atual',   value: `R$ ${Number(u.saldo||0).toFixed(2)}`,                inline: true },
-        { name: '👥 Indicados',     value: `**${indicados}**`,                                   inline: true },
-        { name: '🛒 Vendas geradas',value: `**${vendas.c}**`,                                    inline: true },
-        { name: '💵 Total comissão',value: `R$ ${Number(vendas.t).toFixed(2)}`,                  inline: true },
-        { name: '🆔 Discord ID',    value: `\`${u.discord_id}\``,                               inline: true },
+        { name: '📊 Nível',          value: nivelLabel,                                          inline: true },
+        { name: '🔑 Acesso',         value: `\`${u.codigo_acesso || '—'}\``,                    inline: true },
+        { name: '🏷️ Vendas',         value: `\`${u.codigo_afil || '—'}\``,                      inline: true },
+        { name: '💰 Saldo',          value: `R$ ${Number(u.saldo||0).toFixed(2)}`,               inline: true },
+        { name: '🛒 Vendas geradas', value: `**${vendas.c}** • R$ ${Number(vendas.t).toFixed(2)}`, inline: true },
+        { name: '👥 N2 registrados', value: `**${n2count}**`,                                    inline: true },
+        { name: '🆔 Discord ID',     value: `\`${u.discord_id}\``,                              inline: true },
       )
       .setTimestamp();
     const rowAcoes = new ActionRowBuilder().addComponents(
@@ -2588,68 +2619,24 @@ async function handlePainelAdminModals(interaction, client) {
     await interaction.deferReply({ ephemeral: true });
     const pct = parseFloat(interaction.fields.getTextInputValue('pct').trim());
     if (isNaN(pct) || pct < 0 || pct > 100) return interaction.editReply({ content: '❌ Valor entre 0 e 100.' });
-    // Corrigido: salva na chave correta que loja.js lê
     db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('taxa_afiliado',?,'string')").run(String(pct));
-    return interaction.editReply({ content: `✅ Comissão Nível 1 definida em **${pct}%** por venda.` });
+    return interaction.editReply({ content: `✅ Comissão N1 definida em **${pct}%** por venda.` });
   }
 
   if (id === 'pam_afil_cfg_nivel2') {
     await interaction.deferReply({ ephemeral: true });
     const pct = parseFloat(interaction.fields.getTextInputValue('pct').trim());
     if (isNaN(pct) || pct < 0 || pct > 100) return interaction.editReply({ content: '❌ Valor entre 0 e 100.' });
-    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('taxa_afil_nivel2',?,'string')").run(String(pct));
-    return interaction.editReply({ content: `✅ Comissão Nível 2 definida em **${pct}%** (dividido entre afiliados N2).` });
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('taxa_afil_n2',?,'string')").run(String(pct));
+    return interaction.editReply({ content: `✅ Comissão N2 definida em **${pct}%** por venda.` });
   }
 
-  if (id === 'pam_afil_registrar') {
+  if (id === 'pam_afil_cfg_bonus') {
     await interaction.deferReply({ ephemeral: true });
-    const discordId = interaction.fields.getTextInputValue('discord_id').trim();
-    const codigo    = interaction.fields.getTextInputValue('codigo').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (!codigo || codigo.length < 4) return interaction.editReply({ content: '❌ Código inválido. Use letras e números, mínimo 4 caracteres.' });
-
-    // Verificar se o código já existe
-    const existeCodigo = db.prepare('SELECT discord_id FROM usuarios WHERE codigo_afil=?').get(codigo);
-    if (existeCodigo && existeCodigo.discord_id !== discordId) {
-      return interaction.editReply({ content: `❌ Código \`${codigo}\` já está em uso por outro usuário.` });
-    }
-
-    // Garantir usuário no banco
-    const { Usuarios } = require('../database/database');
-    const membro = await interaction.guild.members.fetch(discordId).catch(() => null);
-    if (!membro) return interaction.editReply({ content: `❌ Usuário \`${discordId}\` não encontrado no servidor.` });
-
-    Usuarios.garantir(discordId, membro.user.username);
-    db.prepare('UPDATE usuarios SET codigo_afil=? WHERE discord_id=?').run(codigo, discordId);
-
-    // Notificar o afiliado por DM
-    try {
-      const taxa1 = Config.get('taxa_afiliado') || '5';
-      const taxa2 = Config.get('taxa_afil_nivel2') || '2';
-      await membro.send({
-        embeds: [new EmbedBuilder()
-          .setColor(0x9B59B6)
-          .setTitle('🤝 Você foi registrado como Afiliado!')
-          .setDescription([
-            `> Seu código exclusivo foi criado pelo administrador.`,
-            `> Compartilhe com seus clientes para ganhar comissão em cada venda!`,
-            '',
-            `🔑 **Seu Código:** \`${codigo}\``,
-            `💰 **Comissão:** ${taxa1}% por venda (Nível 1)`,
-            `🤝 **Bônus N2:** ${taxa2}% adicional ao registrar afiliados`,
-            '',
-            `> Acesse o canal de afiliados para ver seu painel.`,
-          ].join('\n'))
-          .setTimestamp()
-          .setFooter({ text: 'Máximo Store • Programa de Afiliados' })],
-      }).catch(() => {});
-    } catch {}
-
-    const { log } = require('../utils/logger');
-    await log('sistema', { executor: interaction.user.id, descricao: `➕ Afiliado registrado: <@${discordId}> com código \`${codigo}\`` });
-
-    return interaction.editReply({
-      content: `✅ Afiliado **${membro.user.username}** registrado com código \`${codigo}\`!\n> DM enviada com as informações.`,
-    });
+    const pct = parseFloat(interaction.fields.getTextInputValue('pct').trim());
+    if (isNaN(pct) || pct < 0 || pct > 100) return interaction.editReply({ content: '❌ Valor entre 0 e 100.' });
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('taxa_afil_n1_bonus',?,'string')").run(String(pct));
+    return interaction.editReply({ content: `✅ Bônus N1 (quando N2 vende) definido em **${pct}%**.` });
   }
 
   if (id === 'pam_afil_cfg_min_saque') {
@@ -2658,6 +2645,58 @@ async function handlePainelAdminModals(interaction, client) {
     if (isNaN(valor) || valor < 0) return interaction.editReply({ content: '❌ Valor inválido.' });
     db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('min_saque_afiliado',?,'string')").run(String(valor));
     return interaction.editReply({ content: `✅ Mínimo para saque definido em **R$ ${valor.toFixed(2)}**.` });
+  }
+
+  if (id === 'pam_afil_registrar') {
+    await interaction.deferReply({ ephemeral: true });
+    const discordId    = interaction.fields.getTextInputValue('discord_id').trim();
+    const codigoAcesso = interaction.fields.getTextInputValue('codigo_acesso').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const codigoVendas = interaction.fields.getTextInputValue('codigo_vendas').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (codigoAcesso.length < 4) return interaction.editReply({ content: '❌ Código de acesso inválido (mín. 4 chars).' });
+    if (codigoVendas.length < 2) return interaction.editReply({ content: '❌ Código de vendas inválido (mín. 2 chars).' });
+
+    const membro = await interaction.guild.members.fetch(discordId).catch(() => null);
+    if (!membro) return interaction.editReply({ content: `❌ Usuário \`${discordId}\` não encontrado.` });
+
+    const { registrarAfiliadoN1 } = require('./afiliados');
+    const { ok, erro } = await registrarAfiliadoN1(interaction, discordId, codigoAcesso, codigoVendas);
+    if (!ok) return interaction.editReply({ content: `❌ ${erro}` });
+
+    // Dar cargo de Afiliado N1
+    const cargoN1 = '1546330596207366175';
+    await membro.roles.add(cargoN1).catch(() => {});
+
+    return interaction.editReply({
+      content: `✅ Afiliado N1 **${membro.user.username}** registrado!\n> Acesso: \`${codigoAcesso}\` | Vendas: \`${codigoVendas}\`\n> Cargo de Afiliado N1 adicionado. DM enviada.`,
+    });
+  }
+
+  if (id === 'pam_afil_remover') {
+    await interaction.deferReply({ ephemeral: true });
+    const discordId = interaction.fields.getTextInputValue('discord_id').trim();
+    const { removerAfiliado } = require('./afiliados');
+    const { ok, erro } = removerAfiliado(discordId);
+    if (!ok) return interaction.editReply({ content: `❌ ${erro}` });
+
+    // Remover cargos de afiliado
+    const membro = await interaction.guild.members.fetch(discordId).catch(() => null);
+    if (membro) {
+      await membro.roles.remove('1546330596207366175').catch(() => {});
+      await membro.roles.remove('1546330866828050532').catch(() => {});
+      // Notificar por DM
+      await membro.send({
+        embeds: [new EmbedBuilder()
+          .setColor(config.colors.error)
+          .setTitle('❌ Afiliado Removido')
+          .setDescription('> Seu acesso ao programa de afiliados foi removido pelo administrador.')
+          .setTimestamp()
+          .setFooter({ text: 'Máximo Store' })],
+      }).catch(() => {});
+    }
+
+    const { log } = require('../utils/logger');
+    await log('sistema', { executor: interaction.user.id, descricao: `🗑️ Afiliado removido: <@${discordId}>` });
+    return interaction.editReply({ content: `✅ Afiliado <@${discordId}> removido. Cargos e códigos apagados.` });
   }
 
   // ─── Ver conteúdo entregue de um pedido ──────────────────────────────────

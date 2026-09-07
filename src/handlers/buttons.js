@@ -455,23 +455,58 @@ module.exports = async (interaction, client) => {
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId('codigo')
-          .setLabel('Seu código de afiliado')
+          .setLabel('Seu código de ACESSO ao painel')
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
-          .setPlaceholder('Ex: AB12CD34'),
+          .setPlaceholder('Código fornecido pelo admin'),
       ),
     );
     return interaction.showModal(modal);
   }
 
-  if (id === 'afil_solicitar_saque') {
+  if (id.startsWith('afil_solicitar_saque_')) {
+    const afilId = id.replace('afil_solicitar_saque_', '');
     const { solicitarSaque } = require('../systems/afiliados');
-    return solicitarSaque(interaction);
+    return solicitarSaque(interaction, afilId);
   }
 
-  if (id === 'afil_ver_historico') {
+  if (id.startsWith('afil_historico_')) {
+    const afilId = id.replace('afil_historico_', '');
     const { mostrarHistoricoAfiliado } = require('../systems/afiliados');
-    return mostrarHistoricoAfiliado(interaction);
+    return mostrarHistoricoAfiliado(interaction, afilId);
+  }
+
+  if (id.startsWith('afil_registrar_n2_')) {
+    const superiorId = id.replace('afil_registrar_n2_', '');
+    // Verificar se o clicante é o próprio afiliado N1
+    if (interaction.user.id !== superiorId) {
+      return interaction.reply({ content: '❌ Você só pode registrar afiliados para o seu próprio painel.', ephemeral: true });
+    }
+    const modal = new ModalBuilder().setCustomId(`modal_afil_reg_n2_${superiorId}`).setTitle('➕ Registrar Afiliado N2');
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId('discord_id').setLabel('Discord ID do afiliado N2').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 1234567890123456789'),
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId('codigo_acesso').setLabel('Código de acesso (para entrar no painel)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: PEDRO2025').setMaxLength(20),
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId('codigo_vendas').setLabel('Código de vendas (para o ticket)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: PEDRO10').setMaxLength(20),
+      ),
+    );
+    return interaction.showModal(modal);
+  }
+
+  if (id.startsWith('afil_gerar_codigo_')) {
+    const afilId = id.replace('afil_gerar_codigo_', '');
+    if (interaction.user.id !== afilId) return interaction.reply({ content: '❌ Sem permissão.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId(`modal_afil_novo_codigo_${afilId}`).setTitle('🔄 Gerar Novo Código de Vendas');
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId('codigo').setLabel('Novo código de vendas').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: ALAN20').setMaxLength(20),
+      ),
+    );
+    return interaction.showModal(modal);
   }
 
   // ── Aplicar cupom no pedido ───────────────────────────────────────────────────
