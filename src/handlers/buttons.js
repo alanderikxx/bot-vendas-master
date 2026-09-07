@@ -466,22 +466,21 @@ module.exports = async (interaction, client) => {
 
   if (id.startsWith('afil_solicitar_saque_')) {
     const afilId = id.replace('afil_solicitar_saque_', '');
+    if (interaction.user.id !== afilId) return interaction.reply({ content: '❌ Você só pode solicitar saque do seu próprio painel.', ephemeral: true });
     const { solicitarSaque } = require('../systems/afiliados');
     return solicitarSaque(interaction, afilId);
   }
 
   if (id.startsWith('afil_historico_')) {
     const afilId = id.replace('afil_historico_', '');
+    if (interaction.user.id !== afilId) return interaction.reply({ content: '❌ Você só pode ver o seu próprio histórico.', ephemeral: true });
     const { mostrarHistoricoAfiliado } = require('../systems/afiliados');
     return mostrarHistoricoAfiliado(interaction, afilId);
   }
 
   if (id.startsWith('afil_registrar_n2_')) {
     const superiorId = id.replace('afil_registrar_n2_', '');
-    // Verificar se o clicante é o próprio afiliado N1
-    if (interaction.user.id !== superiorId) {
-      return interaction.reply({ content: '❌ Você só pode registrar afiliados para o seu próprio painel.', ephemeral: true });
-    }
+    if (interaction.user.id !== superiorId) return interaction.reply({ content: '❌ Você só pode registrar afiliados no seu próprio painel.', ephemeral: true });
     const modal = new ModalBuilder().setCustomId(`modal_afil_reg_n2_${superiorId}`).setTitle('➕ Registrar Afiliado N2');
     modal.addComponents(
       new ActionRowBuilder().addComponents(

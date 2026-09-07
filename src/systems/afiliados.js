@@ -214,6 +214,12 @@ async function mostrarPainelAfiliado(interaction, codigoAcesso) {
   const usuario = buscarPorCodigoAcesso(codigoAcesso);
   if (!usuario) return interaction.editReply({ content: '❌ Código de acesso inválido.' });
 
+  // Só o dono do código pode acessar — admins podem ver qualquer painel
+  const { isAdmin } = require('../utils/permissions');
+  if (usuario.discord_id !== interaction.user.id && !isAdmin(interaction.member)) {
+    return interaction.editReply({ content: '❌ Este código não pertence a você.' });
+  }
+
   const nivel = usuario.nivel_afil || 0;
   if (!nivel) return interaction.editReply({ content: '❌ Você não é um afiliado ativo.' });
 
