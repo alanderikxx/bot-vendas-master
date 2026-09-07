@@ -77,9 +77,10 @@ async function abrirSaqueSubmenu(interaction, afilId) {
     });
   }
 
-  const s = novaSessao(afilId, usuario.saldo || 0);
-  // Pré-preencher valor com o saldo total
-  setSessao(afilId, { valor: Number(usuario.saldo).toFixed(2) });
+  // Sessão sempre pela chave do usuário que está interagindo
+  const s = novaSessao(interaction.user.id, usuario.saldo || 0);
+  s.afilId = afilId; // guardar o afilId real separado
+  setSessao(interaction.user.id, { valor: Number(usuario.saldo).toFixed(2) });
 
   if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
   return interaction.editReply({ embeds: [buildEmbed(s)], components: buildRows(s) });
@@ -203,7 +204,7 @@ async function confirmarSaque(interaction) {
   const s = getSessao(interaction.user.id);
   if (!s?.valor || !s?.nome || !s?.tipoPix || !s?.chavePix) return;
 
-  const afilId  = s.userId;
+  const afilId  = s.afilId || s.userId;
   const usuario = db.prepare('SELECT * FROM usuarios WHERE discord_id=?').get(afilId);
   if (!usuario) return;
 
