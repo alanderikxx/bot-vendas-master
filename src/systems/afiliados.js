@@ -214,9 +214,8 @@ async function mostrarPainelAfiliado(interaction, codigoAcesso) {
   const usuario = buscarPorCodigoAcesso(codigoAcesso);
   if (!usuario) return interaction.editReply({ content: '❌ Código de acesso inválido.' });
 
-  // Só o dono do código pode acessar — admins podem ver qualquer painel
-  const { isAdmin } = require('../utils/permissions');
-  if (usuario.discord_id !== interaction.user.id && !isAdmin(interaction.member)) {
+  // Apenas o dono do código pode acessar o painel
+  if (usuario.discord_id !== interaction.user.id) {
     return interaction.editReply({ content: '❌ Este código não pertence a você.' });
   }
 
