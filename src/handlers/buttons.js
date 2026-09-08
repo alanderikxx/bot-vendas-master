@@ -800,8 +800,63 @@ module.exports = async (interaction, client) => {
     removerDoCarrinho(interaction.user.id, produtoId);
     return interaction.reply({ content: '✅ Item removido do carrinho.', ephemeral: true });
   }
-  if (id === 'carrinho_comprar_tudo') {
-    await interaction.deferReply({ ephemeral: true });
+  // ── Carrinho multi-variante (cvar_*) ──────────────────────────────────────────
+  if (id.startsWith('cvar_')) {
+    const cv = require('../systems/carrinhoVariante');
+
+    // Adicionar item ao carrinho
+    if (id.startsWith('cvar_add_')) {
+      const varianteId = id.replace('cvar_add_', '');
+      // Pegar qty da sessão do painelProdutoHandler
+      const handler = require('../handlers/painelProdutoHandler');
+      const qtdSessao = handler.qtdSessao;
+      const sessao = qtdSessao?.get(interaction.user.id) || { qtd: 1 };
+      const qtd    = sessao.qtd || 1;
+      const { ok, erro, total } = cv.adicionarItem(interaction.user.id, varianteId, qtd);
+      if (!ok) return interaction.reply({ content: `❌ ${erro}`, ephemeral: true });
+
+      const embed = cv.buildCarrinhoEmbed(interaction.user.id);
+      const rows  = cv.buildCarrinhoRows(interaction.user.id);
+      return interaction.update({ embeds: [embed], components: rows });
+    }
+
+    // Mostrar carrinho
+    if (id === 'cvar_ver') {
+      return cv.mostrarCarrinhoVariante(interaction);
+    }
+
+    // Continuar comprando — fecha o carrinho (a pessoa vai no canal escolher mais)
+    if (id === 'cvar_continuar') {
+      return interaction.update({
+        content: '✅ Itens salvos no carrinho! Continue escolhendo produtos nos canais da loja.\nUse **🛒 Ver Carrinho** ou clique em **🛒 Add ao Carrinho** em qualquer produto.',
+        embeds: [],
+        components: [],
+      });
+    }
+
+    // Finalizar carrinho
+    if (id === 'cvar_finalizar') {
+      await interaction.deferUpdate().catch(() => {});
+      return cv.finalizarCarrinho(interaction, client);
+    }
+
+    // Limpar carrinho
+    if (id === 'cvar_limpar') {
+      cv.limparCarrinhoVariante(interaction.user.id);
+      return interaction.update({ content: '🗑️ Carrinho limpo.', embeds: [], components: [] });
+    }
+
+    // Remover item individual (botão direto)
+    if (id.startsWith('cvar_remover_')) {
+      const varianteId = id.replace('cvar_remover_', '');
+      cv.removerItem(interaction.user.id, varianteId);
+      const embed = cv.buildCarrinhoEmbed(interaction.user.id);
+      if (!embed) return interaction.update({ content: '🛒 Carrinho vazio.', embeds: [], components: [] });
+      return interaction.update({ embeds: [embed], components: cv.buildCarrinhoRows(interaction.user.id) });
+    }
+  }
+
+  if (id === 'carrinho_comprar_tudo') {    await interaction.deferReply({ ephemeral: true });
     const itens = listarCarrinho(interaction.user.id);
     if (!itens.length) return interaction.editReply({ content: '🛒 Carrinho vazio.' });
     const total = calcularTotal(itens);

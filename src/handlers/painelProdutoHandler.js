@@ -89,6 +89,7 @@ module.exports = async (interaction, client) => {
 
     const rowConfirm = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`confirmar_compra_var_${varianteId}`).setLabel('✅ Confirmar Compra').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`cvar_add_${varianteId}`).setLabel('🛒 Add ao Carrinho').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`alterar_qtd_confirm_${varianteId}`).setLabel('🔢 Quantidade').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('cancelar_confirmacao').setLabel('❌ Cancelar').setStyle(ButtonStyle.Secondary),
     );
@@ -135,6 +136,7 @@ module.exports = async (interaction, client) => {
 
     const rowConfirm = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`confirmar_compra_var_${varianteId}`).setLabel('✅ Confirmar Compra').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`cvar_add_${varianteId}`).setLabel('🛒 Add ao Carrinho').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`alterar_qtd_confirm_${varianteId}`).setLabel('🔢 Quantidade').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('cancelar_confirmacao').setLabel('❌ Cancelar').setStyle(ButtonStyle.Secondary),
     );
@@ -183,3 +185,6 @@ module.exports = async (interaction, client) => {
     return iniciarCompraVariante(interaction, varianteId, client);
   }
 };
+
+// Exportar qtdSessao para acesso externo
+module.exports.qtdSessao = qtdSessao;

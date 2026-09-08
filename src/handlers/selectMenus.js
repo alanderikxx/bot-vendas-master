@@ -285,6 +285,16 @@ module.exports = async (interaction, client) => {
     }
   }
 
+  // ── Remover item do carrinho multi-variante ────────────────────────────────
+  if (id === 'cvar_remover_select') {
+    const varianteId = interaction.values[0];
+    const cv = require('../systems/carrinhoVariante');
+    cv.removerItem(interaction.user.id, varianteId);
+    const embed = cv.buildCarrinhoEmbed(interaction.user.id);
+    if (!embed) return interaction.update({ content: '🛒 Carrinho vazio.', embeds: [], components: [] });
+    return interaction.update({ embeds: [embed], components: cv.buildCarrinhoRows(interaction.user.id) });
+  }
+
   // ── Selecionar produto da loja ────────────────────────────────────────────
   if (id === 'loja_selecionar_produto') {
     const produtoId = interaction.values[0];
