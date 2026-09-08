@@ -515,6 +515,23 @@ function pegarItemVariante(varianteId, usuarioId, pedidoId) {
     } catch {}
   }
 
+  // Atualizar painel do produto para refletir novo estoque no select menu
+  try {
+    const varianteRow = db.prepare('SELECT produto_id FROM variantes_produto WHERE id=?').get(varianteId);
+    if (varianteRow) {
+      const paineis = db.prepare('SELECT * FROM paineis_canal WHERE produto_id=? AND ativo=1').all(varianteRow.produto_id);
+      setImmediate(async () => {
+        const { getClient } = require('../utils/logger');
+        const c = getClient();
+        const guild = c?.guilds?.cache?.first();
+        if (!guild) return;
+        for (const p of paineis) {
+          await atualizarPainelProduto(guild, p.id).catch(() => {});
+        }
+      });
+    }
+  } catch {}
+
   return item.conteudo;
 }
 

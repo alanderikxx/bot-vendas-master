@@ -144,4 +144,6 @@ const _err = console.error;
 console.log   = (...a) => _log('[LOG]', new Date().toLocaleTimeString('pt-BR'), ...a);
 console.error = (...a) => _err('[ERR]', new Date().toLocaleTimeString('pt-BR'), ...a);
 
-module.exports = { setClient, log };
+function getClient() { return client; }
+
+module.exports = { setClient, getClient, log };
