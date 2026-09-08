@@ -302,11 +302,17 @@ module.exports = async (interaction, client) => {
       const stripe = require('../systems/stripe');
       const status = await stripe.consultarSessao(consultarId);
       if (status.pago) {
+        const pedidoAtual = Pedidos.get(pedidoId);
         db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE id=?").run(pedidoId);
+        // Marcar outros pedidos do mesmo ticket como pagos (carrinho multi-produto)
+        if (pedidoAtual?.ticket_id) {
+          db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE ticket_id=? AND id!=? AND status='pendente'")
+            .run(pedidoAtual.ticket_id, pedidoId);
+        }
         const { processarEntrega } = require('../systems/loja');
         await processarEntrega(Pedidos.get(pedidoId), client);
         if (interaction.message) await interaction.message.delete().catch(() => {});
-        return interaction.editReply({ content: '✅ Pagamento confirmado! Produto entregue no privado.' });
+        return interaction.editReply({ content: '✅ Pagamento confirmado! Produto(s) entregue(s) no privado.' });
       }
       return interaction.editReply({ content: '⏳ Pagamento não confirmado ainda. Complete o pagamento e tente novamente.' });
     } catch (err) {
@@ -376,8 +382,14 @@ module.exports = async (interaction, client) => {
         if (status.pago) {
           // Marcar pedido como pago e entregar
           db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE id=?").run(pedidoId);
+          // Marcar outros pedidos do mesmo ticket (carrinho multi-produto)
+          if (pedido.ticket_id) {
+            db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE ticket_id=? AND id!=? AND status='pendente'")
+              .run(pedido.ticket_id, pedidoId);
+          }
           const pedidoAtualizado = Pedidos.get(pedidoId);
-          await entregarProduto(pedidoAtualizado, client);
+          const { processarEntrega } = require('../systems/loja');
+          await processarEntrega(pedidoAtualizado, client);
 
           // Fechar ticket automaticamente
           if (pedido.ticket_id) {

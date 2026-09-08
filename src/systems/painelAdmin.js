@@ -172,10 +172,13 @@ function buildLojaMenu() {
     btn('pa_deletar_cupom',    '🗑️ Del Cupom',   ButtonStyle.Danger),
     btn('pa_pausar_produto',   '⏸️ Pausar',       ButtonStyle.Secondary),
     btn('pa_ver_estoque',      '🔍 Ver Estoque',  ButtonStyle.Secondary),
+  );
+
+  const row4 = new ActionRowBuilder().addComponents(
     btn('pa_home',             '🔙 Voltar',       ButtonStyle.Secondary),
   );
 
-  return { embed, components: [row1, row2, row3] };
+  return { embed, components: [row1, row2, row3, row4] };
 }
 
 // ─── Menu Operações (Admin+) ──────────────────────────────────────────────────

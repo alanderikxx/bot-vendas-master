@@ -850,16 +850,28 @@ async function processarEntrega(pedido, client) {
     const nota = (() => { try { return pedido.nota_fiscal ? JSON.parse(pedido.nota_fiscal) : null; } catch { return null; } })();
 
     if (nota?.tipo === 'caixa') {
-      // ── Caixa Misteriosa: sortear e entregar pela % de chance ──────────────
       const { entregarPrêmioCaixa } = require('./caixaMisteriosa');
       return await entregarPrêmioCaixa(pedido, client);
     } else if (nota?.tipo === 'coins') {
-      // ── Compra de coins ────────────────────────────────────────────────────
       const { entregarCoins } = require('./coins');
       return await entregarCoins(pedido, client);
     } else {
-      // ── Produto normal ─────────────────────────────────────────────────────
-      return await entregarProduto(pedido, client);
+      // Entregar este pedido
+      await entregarProduto(pedido, client);
+
+      // Se é carrinho multi-produto, entregar os outros pedidos do mesmo ticket
+      if (nota?.carrinhoMulti && pedido.ticket_id) {
+        const outrosPedidos = db.prepare(`
+          SELECT * FROM pedidos
+          WHERE ticket_id=? AND id!=? AND status='pago'
+        `).all(pedido.ticket_id, pedido.id);
+
+        for (const outro of outrosPedidos) {
+          await entregarProduto(outro, client).catch(e =>
+            console.error(`[ProcessarEntrega] Erro ao entregar pedido extra ${outro.id.slice(0,8)}:`, e.message)
+          );
+        }
+      }
     }
   } catch (err) {
     console.error('[ProcessarEntrega]', err.message);
