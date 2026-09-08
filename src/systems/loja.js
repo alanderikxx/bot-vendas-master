@@ -297,7 +297,13 @@ async function pagarComCoins(interaction, pedidoId, client) {
 
   const pedidoAtualizado = Pedidos.get(pedidoId);
 
-  // Usar processarEntrega que escolhe automaticamente: caixa (sorteio) ou produto normal
+  // Marcar outros pedidos do mesmo ticket como pagos (carrinho multi-produto)
+  if (pedido.ticket_id) {
+    db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE ticket_id=? AND id!=? AND status='pendente'")
+      .run(pedido.ticket_id, pedidoId);
+  }
+
+  // Usar processarEntrega que entrega este + todos os outros do ticket
   await processarEntrega(pedidoAtualizado, client || interaction.client);
 
   if (pedido.ticket_id) {

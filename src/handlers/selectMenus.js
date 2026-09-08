@@ -43,6 +43,10 @@ module.exports = async (interaction, client) => {
     const sub = require('../systems/adminSubmenus');
     return sub.planoSelectProduto(interaction);
   }
+  if (id === 'ae_select_produto') {
+    const sub = require('../systems/adminSubmenus');
+    return sub.estoqueSelectProduto(interaction);
+  }
   if (id === 'ae_select_variante') {
     const sub = require('../systems/adminSubmenus');
     return sub.estoqueSelectVariante(interaction);

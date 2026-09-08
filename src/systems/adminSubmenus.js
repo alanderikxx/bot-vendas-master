@@ -214,21 +214,63 @@ async function rerenderEstoque(interaction) {
 }
 
 async function estoqueModalVariante(interaction) {
-  // Listar variantes disponíveis
-  const paineis = db.prepare('SELECT p.*, pr.nome AS pnome FROM paineis_canal p JOIN produtos pr ON p.produto_id=pr.id WHERE p.ativo=1').all();
-  const options = [];
-  for (const p of paineis) {
-    const vars = db.prepare('SELECT * FROM variantes_produto WHERE produto_id=? AND ativo=1').all(p.produto_id);
-    for (const v of vars) {
-      if (options.length >= 25) break;
-      options.push({ label: `${p.pnome} — ${v.nome}`.slice(0, 100), description: `ID: ${v.id.slice(0,8)} | R$ ${Number(v.preco).toFixed(2)}`, value: v.id });
-    }
-  }
-  if (!options.length) return interaction.reply({ content: '❌ Nenhuma variante encontrada. Crie planos primeiro.', ephemeral: true });
-  const row = new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder().setCustomId('ae_select_variante').setPlaceholder('Selecione a variante').addOptions(options),
+  // ETAPA 1: listar produtos primeiro
+  const produtos = db.prepare(`
+    SELECT pr.id, pr.nome, COUNT(vp.id) as num_vars
+    FROM produtos pr
+    JOIN variantes_produto vp ON vp.produto_id=pr.id AND vp.ativo=1
+    WHERE pr.ativo=1
+    GROUP BY pr.id ORDER BY pr.nome LIMIT 25
+  `).all();
+
+  if (!produtos.length) return interaction.reply({ content: '❌ Nenhum produto com variantes encontrado.', ephemeral: true });
+
+  const { StringSelectMenuOptionBuilder } = require('discord.js');
+  const opcoes = produtos.map(p =>
+    new StringSelectMenuOptionBuilder()
+      .setValue(p.id)
+      .setLabel(p.nome.slice(0, 100))
+      .setDescription(`${p.num_vars} variante(s)`),
   );
-  return interaction.reply({ content: '🎯 Selecione a variante para adicionar estoque:', components: [row], ephemeral: true });
+
+  const row = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('ae_select_produto')
+      .setPlaceholder('1️⃣ Selecione o produto...')
+      .addOptions(opcoes),
+  );
+  return interaction.reply({ content: '📦 Selecione o produto:', components: [row], ephemeral: true });
+}
+
+async function estoqueSelectProduto(interaction) {
+  // ETAPA 2: listar variantes do produto escolhido
+  const produtoId = interaction.values[0];
+  const produto   = db.prepare('SELECT * FROM produtos WHERE id=?').get(produtoId);
+  if (!produto) return interaction.reply({ content: '❌ Produto não encontrado.', ephemeral: true });
+
+  const variantes = db.prepare(`
+    SELECT vp.*,
+      (SELECT COUNT(*) FROM estoque_variante WHERE variante_id=vp.id AND usado=0) as estoque
+    FROM variantes_produto vp WHERE vp.produto_id=? AND vp.ativo=1 ORDER BY vp.ordem
+  `).all(produtoId);
+
+  if (!variantes.length) return interaction.reply({ content: '❌ Nenhuma variante encontrada para este produto.', ephemeral: true });
+
+  const { StringSelectMenuOptionBuilder } = require('discord.js');
+  const opcoes = variantes.slice(0, 25).map(v =>
+    new StringSelectMenuOptionBuilder()
+      .setValue(v.id)
+      .setLabel(`${v.nome}`.slice(0, 100))
+      .setDescription(`R$ ${Number(v.preco).toFixed(2)} • ${v.estoque} em estoque • ID: ${v.id.slice(0,8)}`),
+  );
+
+  const row = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('ae_select_variante')
+      .setPlaceholder('2️⃣ Selecione a variante...')
+      .addOptions(opcoes),
+  );
+  return interaction.update({ content: `📦 **${produto.nome}** — Selecione a variante:`, components: [row] });
 }
 
 async function estoqueSelectVariante(interaction) {
@@ -495,7 +537,7 @@ module.exports = {
   abrirPlano, planoModalProduto, planoSelectProduto,
   planoModalDados, planoProcessarDados, planoSalvar, planoCancelar,
   // Estoque
-  abrirEstoque, estoqueModalVariante, estoqueSelectVariante,
+  abrirEstoque, estoqueModalVariante, estoqueSelectProduto, estoqueSelectVariante,
   estoqueModalSlot, estoqueProcessarSlot, estoqueSalvar, estoqueCancelar,
   // Cupom
   abrirCupom, cupomModal, cupomProcessar, cupomSalvar, cupomCancelar,
