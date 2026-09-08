@@ -169,6 +169,7 @@ function buildLojaMenu() {
   const row3 = new ActionRowBuilder().addComponents(
     btn('pa_criar_cupom',      '🎟️ Criar Cupom', ButtonStyle.Success),
     btn('pa_listar_cupons',    '🎟️ Ver Cupons',  ButtonStyle.Secondary),
+    btn('pa_deletar_cupom',    '🗑️ Del Cupom',   ButtonStyle.Danger),
     btn('pa_pausar_produto',   '⏸️ Pausar',       ButtonStyle.Secondary),
     btn('pa_ver_estoque',      '🔍 Ver Estoque',  ButtonStyle.Secondary),
     btn('pa_home',             '🔙 Voltar',       ButtonStyle.Secondary),
@@ -1356,6 +1357,66 @@ async function handlePainelAdmin(interaction, client) {
     if (!isLoja(interaction.member)) return interaction.reply({ content: '❌ Apenas cargo Loja.', ephemeral: true });
     const sub = require('./adminSubmenus');
     return sub.abrirCupom(interaction);
+  }
+
+  if (id === 'pa_deletar_cupom') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    // Listar cupons ativos para escolher qual deletar
+    const cupons = db.prepare('SELECT * FROM cupons WHERE ativo=1 ORDER BY criado_em DESC LIMIT 25').all();
+    if (!cupons.length) return interaction.reply({ content: '🎟️ Nenhum cupom ativo para deletar.', ephemeral: true });
+
+    const { StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
+    const opcoes = cupons.map(c => {
+      const val = c.tipo === 'percentual' ? `${c.valor}%` : `R$ ${Number(c.valor).toFixed(2)}`;
+      const exp = c.validade ? new Date(c.validade*1000).toLocaleDateString('pt-BR') : '∞';
+      return new StringSelectMenuOptionBuilder()
+        .setValue(c.id)
+        .setLabel(`🎟️ ${c.codigo} — ${val}`)
+        .setDescription(`Validade: ${exp} • ID: ${c.id.slice(0,8)}`);
+    });
+
+    const selectRow = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('pa_select_deletar_cupom')
+        .setPlaceholder('Selecione o cupom para deletar...')
+        .addOptions(opcoes),
+    );
+
+    return interaction.reply({
+      embeds: [new EmbedBuilder()
+        .setColor(config.colors.error)
+        .setTitle('🗑️ Deletar Cupom')
+        .setDescription('> Selecione o cupom que deseja **desativar permanentemente**.')
+        .setTimestamp()],
+      components: [selectRow],
+      ephemeral: true,
+    });
+  }
+
+  if (id === 'pa_select_deletar_cupom') {
+    if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
+    const cupomId = interaction.values[0];
+    const cupom   = db.prepare('SELECT * FROM cupons WHERE id=?').get(cupomId);
+    if (!cupom) return interaction.reply({ content: '❌ Cupom não encontrado.', ephemeral: true });
+
+    // Desativar (soft delete)
+    db.prepare('UPDATE cupons SET ativo=0 WHERE id=?').run(cupomId);
+
+    const { log } = require('../utils/logger');
+    await log('sistema', { executor: interaction.user.id, descricao: `🗑️ Cupom deletado: \`${cupom.codigo}\`` });
+
+    return interaction.update({
+      embeds: [new EmbedBuilder()
+        .setColor(config.colors.success)
+        .setTitle('✅ Cupom Deletado')
+        .addFields(
+          { name: '🎟️ Código', value: `\`${cupom.codigo}\``,                                       inline: true },
+          { name: '💰 Valor',  value: cupom.tipo === 'percentual' ? `${cupom.valor}%` : `R$ ${Number(cupom.valor).toFixed(2)}`, inline: true },
+        )
+        .setDescription('> Cupom desativado com sucesso. Não poderá mais ser usado.')
+        .setTimestamp()],
+      components: [],
+    });
   }
 
   if (id === 'pa_listar_cupons') {

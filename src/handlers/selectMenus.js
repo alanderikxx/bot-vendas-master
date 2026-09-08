@@ -14,6 +14,12 @@ module.exports = async (interaction, client) => {
     return handlePainelAdmin(interaction, client);
   }
 
+  // ── Selecionar cupom para deletar ────────────────────────────────────────
+  if (id === 'pa_select_deletar_cupom') {
+    const { handlePainelAdmin } = require('../systems/painelAdmin');
+    return handlePainelAdmin(interaction, client);
+  }
+
   // ── Remover plano do builder de carrinho ──────────────────────────────────
   if (id === 'cc_rem_plano_select') {
     const cc = require('../systems/criarCarrinhoSub');
