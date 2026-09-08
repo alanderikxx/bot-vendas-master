@@ -99,6 +99,9 @@ function buildCarrinhoEmbed(userId) {
   const c = getCarrinho(userId);
   if (!c || !c.itens.length) return null;
 
+  // Ordenar por preço unitário crescente
+  c.itens.sort((a, b) => a.preco - b.preco);
+
   const total    = calcularTotal(userId);
   const cashback = Math.floor(total * parseInt(Config.get('cashback_pct') || '5'));
 
