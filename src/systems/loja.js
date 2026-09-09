@@ -197,7 +197,7 @@ async function iniciarCompra(interaction, produtoId, cupomCodigo = null) {
 
 // ─── Gerar PIX real ao clicar no botão ───────────────────────────────────────
 async function gerarPixPedido(interaction, pedidoId, client) {
-  if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: false });
+  if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
 
   const pedido = Pedidos.get(pedidoId);
   if (!pedido) return interaction.editReply({ content: '❌ Pedido não encontrado.' });
@@ -304,23 +304,8 @@ async function pagarComCoins(interaction, pedidoId, client) {
   }
 
   // Usar processarEntrega que entrega este + todos os outros do ticket
+  // O fecharTicketAutomatico dentro de entregarProduto cuida do transcript + fechamento
   await processarEntrega(pedidoAtualizado, client || interaction.client);
-
-  if (pedido.ticket_id) {
-    const { Tickets } = require('../database/database');
-    const ticket = Tickets.get(pedido.ticket_id);
-    if (ticket && ticket.status === 'aberto') {
-      Tickets.atualizar(pedido.ticket_id, {
-        status: 'fechado', fechado_por: interaction.user.id,
-        motivo: 'Pago com coins', fechado_em: Math.floor(Date.now()/1000),
-      });
-      const canalTicket = interaction.guild?.channels.cache.get(pedido.ticket_id);
-      if (canalTicket) {
-        await canalTicket.send({ content: `✅ Pagamento confirmado com coins! Ticket encerrado.` }).catch(() => {});
-        setTimeout(() => canalTicket.delete().catch(() => {}), 5000);
-      }
-    }
-  }
 
   await interaction.editReply({
     embeds: [new EmbedBuilder()
@@ -683,6 +668,14 @@ async function entregarProduto(pedido, client) {
     try {
       const { logVenda } = require('../utils/canalVendas');
       await logVenda(client, pedido);
+    } catch {}
+
+    // ── Fechar ticket automaticamente com transcript ──────────────────────
+    try {
+      if (pedido.ticket_id) {
+        const { fecharTicketAutomatico } = require('./tickets');
+        await fecharTicketAutomatico(guild, pedido.ticket_id, null, 'Pagamento confirmado e produto entregue');
+      }
     } catch {}
   } catch (err) {
     console.error('[EntregarProduto]', err.message);

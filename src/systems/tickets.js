@@ -615,8 +615,51 @@ async function gerarTranscript(interaction) {
   await interaction.editReply({ content: '📄 Transcrição gerada!', files: [att] });
 }
 
+// ─── Fechar ticket automaticamente após pagamento (com transcript) ────────────
+async function fecharTicketAutomatico(guild, canalId, ticketId, motivo = 'Pagamento confirmado e produto entregue', fechadoPorId = null) {
+  try {
+    const ticket = Tickets.get(canalId) || db.prepare('SELECT * FROM tickets WHERE id=?').get(ticketId);
+    if (!ticket || ticket.status === 'fechado') return;
+
+    const fechadoPor = fechadoPorId || guild.client.user.id;
+
+    Tickets.atualizar(canalId, {
+      status:      'fechado',
+      fechado_por: fechadoPor,
+      motivo,
+      fechado_em:  Math.floor(Date.now() / 1000),
+    });
+
+    const canal = guild.channels.cache.get(canalId);
+    if (!canal) return;
+
+    // Gerar transcript
+    const ticketAtualizado = { ...ticket, status: 'fechado', fechado_por: fechadoPor, motivo, fechado_em: Math.floor(Date.now() / 1000) };
+    const buffer = await gerarTranscricao(canal, ticketAtualizado, guild);
+
+    // Avisar no canal antes de deletar
+    await canal.send({
+      embeds: [new EmbedBuilder()
+        .setColor(config.colors.success)
+        .setTitle('✅ Pagamento Confirmado!')
+        .setDescription('> Produto entregue no seu privado.\n> Este ticket será encerrado automaticamente.')
+        .setTimestamp()
+        .setFooter({ text: 'Máximo Store • Obrigado pela compra!' })],
+    }).catch(() => {});
+
+    // Enviar transcript para o canal de logs
+    await enviarTranscricao(guild, ticketAtualizado, buffer);
+
+    // Deletar canal após 8s
+    setTimeout(() => canal.delete().catch(() => {}), 8000);
+  } catch (err) {
+    console.error('[FecharTicketAuto]', err.message);
+  }
+}
+
 module.exports = {
   abrirTicket, fecharTicket, assumirTicket,
+  fecharTicketAutomatico,
   gerarTranscript,
   gerarTranscricao, enviarTranscricao,
 };

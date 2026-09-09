@@ -390,31 +390,6 @@ module.exports = async (interaction, client) => {
           const pedidoAtualizado = Pedidos.get(pedidoId);
           const { processarEntrega } = require('../systems/loja');
           await processarEntrega(pedidoAtualizado, client);
-
-          // Fechar ticket automaticamente
-          if (pedido.ticket_id) {
-            const { Tickets } = require('../database/database');
-            const ticket = Tickets.get(pedido.ticket_id);
-            if (ticket && ticket.status === 'aberto') {
-              Tickets.atualizar(pedido.ticket_id, {
-                status: 'fechado', fechado_por: interaction.client.user.id,
-                motivo: 'Pagamento confirmado e produto entregue', fechado_em: Math.floor(Date.now()/1000),
-              });
-              const canalTicket = interaction.guild?.channels.cache.get(pedido.ticket_id);
-              if (canalTicket) {
-                await canalTicket.send({
-                  embeds: [new EmbedBuilder()
-                    .setColor(config.colors.success)
-                    .setTitle('✅ Pagamento Confirmado!')
-                    .setDescription('> Produto entregue no seu privado. Ticket encerrado automaticamente.')
-                    .setTimestamp()
-                    .setFooter({ text: 'Máximo Store • Obrigado pela compra!' })],
-                }).catch(() => {});
-                setTimeout(() => canalTicket.delete().catch(() => {}), 5000);
-              }
-            }
-          }
-
           return interaction.editReply({ content: '✅ Pagamento confirmado! Produto entregue no seu privado.' });
         } else {
           return interaction.editReply({ content: '⏳ Pagamento ainda não identificado. Aguarde alguns segundos e tente novamente.' });
