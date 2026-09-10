@@ -503,7 +503,7 @@ async function enviarPainelPublico2FA(guild) {
     const msgs = await canal.messages.fetch({ limit: 20 }).catch(() => null);
     const msgExistente = msgs?.find(m =>
       m.author.id === guild.client.user.id &&
-      m.embeds.some(e => e.title === '🔐 Gerador de Código 2FA')
+      m.embeds.some(e => e.title === '🔐 Rockstar 2FA Center')
     );
 
     if (msgExistente) {

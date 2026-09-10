@@ -12,6 +12,26 @@ const _webhookAvaliacoes = new WebhookClient({ url: 'https://discord.com/api/web
 module.exports = async (interaction, client) => {
   const id = interaction.customId;
 
+  // ── Modal do painel público 2FA ─────────────────────────────────────────────
+  if (id === 'public_2fa_modal') {
+    const { generate2FACodeFromSecret } = require('../2fa');
+    const secret = interaction.fields.getTextInputValue('secret').trim();
+
+    if (!secret) {
+      return interaction.reply({ content: '❌ Informe a chave secreta antes de gerar o código.', ephemeral: true });
+    }
+
+    try {
+      const codigo = generate2FACodeFromSecret(secret, '2FA');
+      return interaction.reply({
+        content: `🔐 Código gerado\n\n\`\`\`\n${codigo.token}\n\`\`\`\n\n⏳ Expira em: **${codigo.remaining}s**`,
+        ephemeral: true,
+      });
+    } catch (error) {
+      return interaction.reply({ content: `❌ ${error.message}`, ephemeral: true });
+    }
+  }
+
   // ── Modal fechar ticket ───────────────────────────────────────────────────
   if (id.startsWith('modal_fechar_ticket_')) {
     const motivo = interaction.fields.getTextInputValue('motivo').trim();
