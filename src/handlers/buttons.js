@@ -4,7 +4,7 @@ const efi = require('../systems/efi');
 const { fecharTicket, assumirTicket, gerarTranscript } = require('../systems/tickets');
 const { adicionarAoCarrinho, removerDoCarrinho, limparCarrinho, mostrarCarrinho, listarCarrinho, calcularTotal } = require('../systems/carrinho');
 const { solicitarSaque } = require('../systems/afiliados');
-const { Pedidos, Produtos, Usuarios, db } = require('../database/database');
+const { Pedidos, Produtos, Usuarios, db, Config } = require('../database/database');
 const { isStaff, podeAceitarCompra, podeVerTickets } = require('../utils/permissions');
 const { Embeds } = require('../utils/embeds');
 const { log } = require('../utils/logger');
@@ -14,6 +14,11 @@ const config = require('../config');
 const painelProdutoHandler = require('./painelProdutoHandler');
 const { handlePainelBuilder } = require('../systems/painelProduto');
 const { handlePainelAdmin } = require('../systems/painelAdmin');
+
+function getConfigText(key, fallback) {
+  const value = Config.get(key);
+  return value === null || value === undefined ? fallback : value;
+}
 
 module.exports = async (interaction, client) => {
   const id = interaction.customId;
@@ -77,13 +82,13 @@ module.exports = async (interaction, client) => {
   if (id === 'public_2fa_gerar') {
     const modal = new ModalBuilder()
       .setCustomId('public_2fa_modal')
-      .setTitle('🔐 Gerar Código 2FA');
+      .setTitle(getConfigText('public_2fa_modal_title', '🔐 Gerar Código 2FA'));
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId('secret')
-          .setLabel('Cole sua chave Base32')
+          .setLabel(getConfigText('public_2fa_input_label', 'Cole sua chave Base32'))
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
           .setPlaceholder('Ex: I7YFCQEIZEOBNOZNM34JLZVJ6M'),
@@ -95,14 +100,14 @@ module.exports = async (interaction, client) => {
 
   if (id === 'public_2fa_help') {
     return interaction.reply({
-      content: '🔐 Como usar:\n\n1. Cole a chave Base32 no modal\n2. Clique em gerar\n3. O bot responde com o código atual e o tempo restante',
+      content: getConfigText('public_2fa_help_text', '🔐 Como usar:\n\n1. Cole a chave Base32 no modal\n2. Clique em gerar\n3. O bot responde com o código atual e o tempo restante'),
       ephemeral: true,
     });
   }
 
   if (id === 'public_2fa_translate') {
     return interaction.reply({
-      content: '🌐 Tradução / Translate\n\n• Chave Base32: `secret`\n• Código gerado: `TOTP`\n• Tempo restante: `expira em 30s`',
+      content: getConfigText('public_2fa_translate_text', '🌐 Tradução / Translate\n\n• Chave Base32: `secret`\n• Código gerado: `TOTP`\n• Tempo restante: `expira em 30s`'),
       ephemeral: true,
     });
   }

@@ -13,7 +13,6 @@ const config  = require('../config');
 const moment  = require('moment-timezone');
 
 const CANAL_PAINEL = '1533638769901703178';
-const CANAL_PAINEL_PUBLICO_2FA = process.env.PAINEL_PUBLICO_2FA_CHANNEL_ID || process.env.PAINEL_2FA_CHANNEL_ID || CANAL_PAINEL;
 
 // ─── Cache de stats (TTL 30s) ─────────────────────────────────────────────────
 let _statsCache = null;
@@ -356,6 +355,7 @@ function buildConfigMenu() {
 
   const row2 = new ActionRowBuilder().addComponents(
     btn('pa_cfg_canal_cupons', '🎟️ Canal Cupons',   ButtonStyle.Secondary),
+    btn('pa_cfg_2fa',          '🔐 Painel 2FA',     ButtonStyle.Secondary),
     btn('pa_zerar_historico',  '🗑️ Zerar Histórico', ButtonStyle.Danger),
     btn('pa_home',             '🔙 Voltar',          ButtonStyle.Secondary),
   );
@@ -414,6 +414,51 @@ function buildAfiliadosMenu() {
   return { embed, components: [row1, row2, row3] };
 }
 
+async function enviarPainelPublico2FA(guild) {
+  try {
+    const canal = guild.channels.cache.get(CANAL_PAINEL);
+    if (!canal) return console.error('[PainelAdmin] Canal do painel 2FA não encontrado:', CANAL_PAINEL);
+
+    const titulo = Config.get('public_2fa_panel_title') ?? '🔐 Painel 2FA';
+    const descricao = Config.get('public_2fa_panel_description') ?? 'Use o painel para gerar seu código atual e consultar instruções rápidas.';
+    const embed = new EmbedBuilder()
+      .setColor(config.colors.primary)
+      .setTitle(titulo)
+      .setDescription(descricao)
+      .setFooter({ text: 'Máximo Store • 2FA' })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      btn('public_2fa_gerar', '🔐 Gerar Código', ButtonStyle.Primary),
+      btn('public_2fa_help', '❓ Ajuda', ButtonStyle.Secondary),
+      btn('public_2fa_translate', '🌐 Tradução', ButtonStyle.Secondary),
+    );
+
+    const msgId = Config.get('painel_publico_2fa_msg_id');
+    if (msgId) {
+      const msg = await canal.messages.fetch(msgId).catch(() => null);
+      if (msg) {
+        await msg.edit({ embeds: [embed], components: [row] }).catch(() => {});
+        return;
+      }
+    }
+
+    const msgs = await canal.messages.fetch({ limit: 25 }).catch(() => null);
+    const msgExistente = msgs?.find(m => m.author.id === guild.client.user.id && m.embeds.some(e => e.title === titulo));
+
+    if (msgExistente) {
+      await msgExistente.edit({ embeds: [embed], components: [row] }).catch(() => {});
+      db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('painel_publico_2fa_msg_id', ?, 'string')").run(msgExistente.id);
+      return;
+    }
+
+    const msg = await canal.send({ embeds: [embed], components: [row] });
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('painel_publico_2fa_msg_id', ?, 'string')").run(msg.id);
+  } catch (err) {
+    console.error('[PainelAdmin] Painel público 2FA:', err.message);
+  }
+}
+
 async function enviarPainelFixo(guild) {
   try {
     const canal = guild.channels.cache.get(CANAL_PAINEL);
@@ -450,70 +495,6 @@ async function atualizarPainelAdmin(guild) {
     await msg.edit({ embeds: [embed], components });
   } catch (err) {
     console.error('[PainelAdmin] Atualizar:', err.message);
-  }
-}
-
-function buildPublic2FAPanel() {
-  const embed = new EmbedBuilder()
-    .setColor(0x444d59)
-    .setTitle('🔐 Rockstar 2FA Center')
-    .setDescription('Central segura para geração de códigos 2FA Rockstar\n**Sistema operacional · Aspect Software · discord.gg/satzx**')
-    .addFields(
-      { name: '📡 Status', value: '🟢 Online', inline: true },
-      { name: '🔒 Resposta', value: 'Privada', inline: true },
-      { name: '⏱️ Renova', value: '30s', inline: true },
-      { name: '✅ Estável', value: 'Operacional', inline: true },
-      { name: '🧩 Central de Controle', value: '• Chave nunca armazenada\n• Código via canal público\n• Expira a cada 30s\n• Compatível com Rockstar', inline: false },
-      { name: '📊 Códigos gerados', value: '295595', inline: true },
-      { name: '👥 Usuários únicos', value: '390', inline: true },
-    )
-    .setTimestamp()
-    .setFooter({ text: 'Aspect Software • discord.gg/satzx' });
-
-  const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('public_2fa_gerar')
-      .setLabel('🔐 Gerar Código')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId('public_2fa_help')
-      .setLabel('📘 Como usar')
-      .setStyle(ButtonStyle.Secondary),
-  );
-
-  const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('public_2fa_translate')
-      .setLabel('🌐 Traduzir / Translate')
-      .setStyle(ButtonStyle.Secondary),
-  );
-
-  return { embed, components: [row1, row2] };
-}
-
-async function enviarPainelPublico2FA(guild) {
-  try {
-    const canal = guild.channels.cache.get(CANAL_PAINEL_PUBLICO_2FA);
-    if (!canal) {
-      console.warn('[PainelPublico2FA] Canal não encontrado:', CANAL_PAINEL_PUBLICO_2FA);
-      return;
-    }
-
-    const { embed, components } = buildPublic2FAPanel();
-    const msgs = await canal.messages.fetch({ limit: 20 }).catch(() => null);
-    const msgExistente = msgs?.find(m =>
-      m.author.id === guild.client.user.id &&
-      m.embeds.some(e => e.title === '🔐 Rockstar 2FA Center')
-    );
-
-    if (msgExistente) {
-      await msgExistente.edit({ embeds: [embed], components }).catch(() => {});
-      return;
-    }
-
-    await canal.send({ embeds: [embed], components });
-  } catch (err) {
-    console.error('[PainelPublico2FA]', err.message);
   }
 }
 
@@ -571,6 +552,29 @@ async function handlePainelAdmin(interaction, client) {
     if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
     const { embed, components } = buildOperacoesMenu();
     return interaction.update({ embeds: [embed], components });
+  }
+
+  if (id === 'pa_cfg_2fa') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_cfg_2fa').setTitle('🔐 Configurar painel 2FA');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('panel_title').setLabel('Título do painel').setStyle(TextInputStyle.Short).setRequired(true)
+        .setPlaceholder('Ex: 🔐 Painel 2FA').setValue(Config.get('public_2fa_panel_title') ?? '🔐 Painel 2FA').setMaxLength(100)),
+      mRow(new TextInputBuilder().setCustomId('panel_description').setLabel('Descrição do painel').setStyle(TextInputStyle.Paragraph).setRequired(false)
+        .setPlaceholder('Ex: Use o painel para gerar seu código atual e consultar instruções rápidas.')
+        .setValue(Config.get('public_2fa_panel_description') ?? 'Use o painel para gerar seu código atual e consultar instruções rápidas.').setMaxLength(500)),
+      mRow(new TextInputBuilder().setCustomId('modal_title').setLabel('Título do modal').setStyle(TextInputStyle.Short).setRequired(true)
+        .setPlaceholder('Ex: 🔐 Gerar Código 2FA').setValue(Config.get('public_2fa_modal_title') ?? '🔐 Gerar Código 2FA').setMaxLength(100)),
+      mRow(new TextInputBuilder().setCustomId('input_label').setLabel('Texto do campo do modal').setStyle(TextInputStyle.Short).setRequired(true)
+        .setPlaceholder('Ex: Cole sua chave Base32').setValue(Config.get('public_2fa_input_label') ?? 'Cole sua chave Base32').setMaxLength(100)),
+      mRow(new TextInputBuilder().setCustomId('help_text').setLabel('Texto do botão Ajuda (opcional)').setStyle(TextInputStyle.Paragraph).setRequired(false)
+        .setPlaceholder('Ex: 1. Cole a chave Base32 no modal\n2. Clique em gerar')
+        .setValue(Config.get('public_2fa_help_text') ?? '🔐 Como usar:\n\n1. Cole a chave Base32 no modal\n2. Clique em gerar\n3. O bot responde com o código atual e o tempo restante').setMaxLength(1000)),
+      mRow(new TextInputBuilder().setCustomId('translate_text').setLabel('Texto do botão Tradução (opcional)').setStyle(TextInputStyle.Paragraph).setRequired(false)
+        .setPlaceholder('Ex: • Chave Base32: `secret`\n• Código gerado: `TOTP`')
+        .setValue(Config.get('public_2fa_translate_text') ?? '🌐 Tradução / Translate\n\n• Chave Base32: `secret`\n• Código gerado: `TOTP`\n• Tempo restante: `expira em 30s`').setMaxLength(1000)),
+    );
+    return interaction.showModal(modal);
   }
 
   // ── Configurações da loja ─────────────────────────────────────────────────
@@ -2027,6 +2031,30 @@ async function handlePainelAdminModals(interaction, client) {
     return interaction.editReply({ content: `✅ Mensagem de boas-vindas atualizada.\n> ${msg.slice(0,100)}` });
   }
 
+  if (id === 'pam_cfg_2fa') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const panelTitle = interaction.fields.getTextInputValue('panel_title').trim() || '🔐 Painel 2FA';
+    const panelDescription = interaction.fields.getTextInputValue('panel_description').trim();
+    const modalTitle = interaction.fields.getTextInputValue('modal_title').trim() || '🔐 Gerar Código 2FA';
+    const inputLabel = interaction.fields.getTextInputValue('input_label').trim() || 'Cole sua chave Base32';
+    const helpText = interaction.fields.getTextInputValue('help_text').trim();
+    const translateText = interaction.fields.getTextInputValue('translate_text').trim();
+
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('public_2fa_panel_title',?,'string')").run(panelTitle);
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('public_2fa_panel_description',?,'string')").run(panelDescription);
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('public_2fa_modal_title',?,'string')").run(modalTitle);
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('public_2fa_input_label',?,'string')").run(inputLabel);
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('public_2fa_help_text',?,'string')").run(helpText);
+    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('public_2fa_translate_text',?,'string')").run(translateText);
+
+    try {
+      await enviarPainelPublico2FA(interaction.guild);
+    } catch {}
+
+    return interaction.editReply({ content: '✅ Configuração do painel 2FA atualizada.' });
+  }
+
   if (id === 'pam_criar_carrinho') {
     await interaction.deferReply({ ephemeral: true });
     const canalId   = interaction.fields.getTextInputValue('canal_id').trim();
@@ -3199,5 +3227,4 @@ module.exports = {
   handlePainelAdmin,
   handlePainelAdminModals,
   CANAL_PAINEL,
-  CANAL_PAINEL_PUBLICO_2FA,
 };
