@@ -25,8 +25,7 @@ module.exports = async (interaction, client) => {
 
     if (!contas.length) {
       return interaction.reply({
-        content: '⚠️ Você ainda não salvou nenhuma conta 2FA.\nUse `!2fa add <nome> <secret>` no privado do bot para salvar sua conta e depois clique no botão novamente.',
-        ephemeral: true,
+        content: '⚠️ Você ainda não salvou nenhuma conta 2FA.\nUse `!2fa add <nome> <secret>` no canal para salvar sua conta e depois clique no botão novamente.',
       });
     }
 
@@ -39,6 +38,18 @@ module.exports = async (interaction, client) => {
 
     return interaction.reply({
       content: `📚 Você tem **${contas.length}** contas salvas.\nUse ` + '`!2fa gerar <nome>`' + ` no canal para escolher qual código gerar.`,
+    });
+  }
+
+  if (id === 'public_2fa_help') {
+    return interaction.reply({
+      content: '🔐 Como usar:\n\n1. `!2fa add <nome> <secret>`\n2. `!2fa gerar <nome>`\n3. Copie o código que aparecerá no canal.',
+    });
+  }
+
+  if (id === 'public_2fa_translate') {
+    return interaction.reply({
+      content: '🌐 Tradução disponível:\n• `!2fa add <nome> <secret>`\n• `!2fa gerar <nome>`\n• `!2fa listar`',
     });
   }
 

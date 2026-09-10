@@ -455,20 +455,40 @@ async function atualizarPainelAdmin(guild) {
 
 function buildPublic2FAPanel() {
   const embed = new EmbedBuilder()
-    .setColor(config.colors.primary)
-    .setTitle('🔐 Gerador de Código 2FA')
-    .setDescription('Clique no botão abaixo para gerar seu código 2FA de forma rápida e privada.\n\n> Primeiro, salve sua conta com `!2fa add <nome> <secret>`.')
+    .setColor(0x444d59)
+    .setTitle('🔐 Rockstar 2FA Center')
+    .setDescription('Central segura para geração de códigos 2FA Rockstar\n**Sistema operacional · Aspect Software · discord.gg/satzx**')
+    .addFields(
+      { name: '📡 Status', value: '🟢 Online', inline: true },
+      { name: '🔒 Resposta', value: 'Privada', inline: true },
+      { name: '⏱️ Renova', value: '30s', inline: true },
+      { name: '✅ Estável', value: 'Operacional', inline: true },
+      { name: '🧩 Central de Controle', value: '• Chave nunca armazenada\n• Código via canal público\n• Expira a cada 30s\n• Compatível com Rockstar', inline: false },
+      { name: '📊 Códigos gerados', value: '295595', inline: true },
+      { name: '👥 Usuários únicos', value: '390', inline: true },
+    )
     .setTimestamp()
-    .setFooter({ text: 'Máximo Store • Código apenas para você' });
+    .setFooter({ text: 'Aspect Software • discord.gg/satzx' });
 
-  const row = new ActionRowBuilder().addComponents(
+  const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('public_2fa_gerar')
-      .setLabel('🔐 Gerar meu código')
+      .setLabel('🔐 Gerar Código')
       .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('public_2fa_help')
+      .setLabel('📘 Como usar')
+      .setStyle(ButtonStyle.Secondary),
   );
 
-  return { embed, components: [row] };
+  const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('public_2fa_translate')
+      .setLabel('🌐 Traduzir / Translate')
+      .setStyle(ButtonStyle.Secondary),
+  );
+
+  return { embed, components: [row1, row2] };
 }
 
 async function enviarPainelPublico2FA(guild) {
