@@ -709,12 +709,12 @@ async function handlePainelAdmin(interaction, client) {
     return interaction.showModal(modal);
   }
 
-  // ── Gerar QR Code manualmente para um pedido ─────────────────────────────
+  // ── Gerar QR Code manualmente com valor ──────────────────────────────────
   if (id === 'pa_gerar_qr') {
     if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
     const modal = new ModalBuilder().setCustomId('pam_gerar_qr').setTitle('💠 Gerar QR Code PIX');
     modal.addComponents(
-      mRow(new TextInputBuilder().setCustomId('pedido_id').setLabel('ID do Pedido (primeiros 8 chars)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: A1B2C3D4')),
+      mRow(new TextInputBuilder().setCustomId('valor').setLabel('Valor (R$)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 99.90')),
     );
     return interaction.showModal(modal);
   }
@@ -2777,48 +2777,33 @@ async function handlePainelAdminModals(interaction, client) {
     return interaction.editReply({ content: `✅ Afiliado <@${discordId}> removido. Cargos e códigos apagados.` });
   }
 
-  // ─── Gerar QR Code manualmente ───────────────────────────────────────────
+  // ─── Gerar QR Code manualmente com valor ─────────────────────────────────
   if (id === 'pam_gerar_qr') {
     await interaction.deferReply({ ephemeral: true });
-    const busca  = interaction.fields.getTextInputValue('pedido_id').trim();
-    const pedido = db.prepare("SELECT p.*, pr.nome as pnome FROM pedidos p JOIN produtos pr ON p.produto_id=pr.id WHERE UPPER(SUBSTR(p.id,1,8))=UPPER(?) OR p.id LIKE ?").get(busca, `${busca}%`);
 
-    if (!pedido) return interaction.editReply({ content: `❌ Pedido \`${busca}\` não encontrado.` });
-    if (pedido.status !== 'pendente') return interaction.editReply({ content: `⚠️ Pedido está com status **${pedido.status}** — só gera QR para pedidos pendentes.` });
+    const valorText = interaction.fields.getTextInputValue('valor').trim().replace(',', '.');
+    const valor = Number(valorText);
+
+    if (!valorText || Number.isNaN(valor) || valor <= 0) {
+      return interaction.editReply({ content: '❌ Informe um valor válido em reais, ex: 99.90.' });
+    }
 
     try {
       const efi      = require('../systems/efi');
       const QRCode   = require('qrcode');
       const { AttachmentBuilder, EmbedBuilder: EB } = require('discord.js');
 
-      // Criar nova cobrança PIX ou reusar txid existente
-      let txid = pedido.tx_id;
-      let qrcode;
+      const pedidoId = `QR_${Date.now()}`;
+      const cobranca = await efi.criarCobrancaPix({
+        valor,
+        descricao: 'Máximo Store - QR Code manual',
+        pedidoId,
+        nomeCliente: 'QR Manual',
+      });
 
-      if (txid && !txid.startsWith('SIM_') && !txid.startsWith('ST_') && !txid.startsWith('BT_')) {
-        // Reusar cobrança existente — buscar QR
-        try {
-          const dados = await efi.consultarCobranca(txid);
-          if (dados?.pixCopiaECola) {
-            qrcode = dados.pixCopiaECola;
-          }
-        } catch {}
-      }
+      const qrData = await efi.gerarQRCode(cobranca.locId);
+      const qrcode = qrData.qrcode;
 
-      if (!qrcode) {
-        // Criar nova cobrança
-        const cobranca = await efi.criarCobrancaPix({
-          valor:       pedido.valor_total,
-          descricao:   `Máximo Store - ${pedido.pnome}`,
-          pedidoId:    pedido.id,
-          nomeCliente: pedido.usuario_id,
-        });
-        db.prepare("UPDATE pedidos SET tx_id=? WHERE id=?").run(cobranca.txid, pedido.id);
-        const qrData = await efi.gerarQRCode(cobranca.locId);
-        qrcode = qrData.qrcode;
-      }
-
-      // Gerar imagem do QR
       let qrBuf = null;
       try { qrBuf = await QRCode.toBuffer(qrcode, { width: 300, margin: 2 }); } catch {}
 
@@ -2826,11 +2811,8 @@ async function handlePainelAdminModals(interaction, client) {
         .setColor(0x00D4AA)
         .setTitle('💠 QR Code PIX Gerado')
         .addFields(
-          { name: '📦 Produto',  value: pedido.pnome,                                           inline: true },
-          { name: '💵 Valor',    value: `R$ ${Number(pedido.valor_total).toFixed(2)}`,           inline: true },
-          { name: '🆔 Pedido',   value: `\`${pedido.id.slice(0,8).toUpperCase()}\``,            inline: true },
-          { name: '👤 Cliente',  value: `<@${pedido.usuario_id}>`,                              inline: true },
-          { name: '💠 PIX Copia e Cola', value: `\`\`\`${qrcode}\`\`\``,                       inline: false },
+          { name: '💵 Valor', value: `R$ ${Number(valor).toFixed(2)}`, inline: true },
+          { name: '💠 PIX Copia e Cola', value: `\`\`\`${qrcode}\`\`\``, inline: false },
         )
         .setTimestamp()
         .setFooter({ text: 'Máximo Store • QR Code gerado manualmente pelo admin' });
