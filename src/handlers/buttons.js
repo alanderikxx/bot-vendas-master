@@ -14,9 +14,35 @@ const config = require('../config');
 const painelProdutoHandler = require('./painelProdutoHandler');
 const { handlePainelBuilder } = require('../systems/painelProduto');
 const { handlePainelAdmin } = require('../systems/painelAdmin');
+const { list2FAAccounts, generate2FACode } = require('../2fa');
 
 module.exports = async (interaction, client) => {
   const id = interaction.customId;
+
+  // ── Painel público 2FA ────────────────────────────────────────────────────────
+  if (id === 'public_2fa_gerar') {
+    const contas = list2FAAccounts(interaction.user.id);
+
+    if (!contas.length) {
+      return interaction.reply({
+        content: '⚠️ Você ainda não salvou nenhuma conta 2FA.\nUse `!2fa add <nome> <secret>` no privado do bot para salvar sua conta e depois clique no botão novamente.',
+        ephemeral: true,
+      });
+    }
+
+    if (contas.length === 1) {
+      const codigo = generate2FACode(interaction.user.id, contas[0]);
+      return interaction.reply({
+        content: `🔐 Código da conta **${codigo.label}**\n\n\`\`\`\n${codigo.token}\n\`\`\`\n\n⏳ Expira em: **${codigo.remaining}s**`,
+        ephemeral: true,
+      });
+    }
+
+    return interaction.reply({
+      content: `📚 Você tem **${contas.length}** contas salvas.\nUse ` + '`!2fa gerar <nome>`' + ` no privado do bot para escolher qual código gerar.`,
+      ephemeral: true,
+    });
+  }
 
   // ── Abrir caixa misteriosa ────────────────────────────────────────────────────
   if (id === 'abrir_caixa_misteriosa') {

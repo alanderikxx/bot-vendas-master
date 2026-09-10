@@ -13,6 +13,7 @@ const config  = require('../config');
 const moment  = require('moment-timezone');
 
 const CANAL_PAINEL = '1533638769901703178';
+const CANAL_PAINEL_PUBLICO_2FA = process.env.PAINEL_PUBLICO_2FA_CHANNEL_ID || process.env.PAINEL_2FA_CHANNEL_ID || CANAL_PAINEL;
 
 // ─── Cache de stats (TTL 30s) ─────────────────────────────────────────────────
 let _statsCache = null;
@@ -449,6 +450,50 @@ async function atualizarPainelAdmin(guild) {
     await msg.edit({ embeds: [embed], components });
   } catch (err) {
     console.error('[PainelAdmin] Atualizar:', err.message);
+  }
+}
+
+function buildPublic2FAPanel() {
+  const embed = new EmbedBuilder()
+    .setColor(config.colors.primary)
+    .setTitle('🔐 Gerador de Código 2FA')
+    .setDescription('Clique no botão abaixo para gerar seu código 2FA de forma rápida e privada.\n\n> Primeiro, salve sua conta com `!2fa add <nome> <secret>`.')
+    .setTimestamp()
+    .setFooter({ text: 'Máximo Store • Código apenas para você' });
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('public_2fa_gerar')
+      .setLabel('🔐 Gerar meu código')
+      .setStyle(ButtonStyle.Primary),
+  );
+
+  return { embed, components: [row] };
+}
+
+async function enviarPainelPublico2FA(guild) {
+  try {
+    const canal = guild.channels.cache.get(CANAL_PAINEL_PUBLICO_2FA);
+    if (!canal) {
+      console.warn('[PainelPublico2FA] Canal não encontrado:', CANAL_PAINEL_PUBLICO_2FA);
+      return;
+    }
+
+    const { embed, components } = buildPublic2FAPanel();
+    const msgs = await canal.messages.fetch({ limit: 20 }).catch(() => null);
+    const msgExistente = msgs?.find(m =>
+      m.author.id === guild.client.user.id &&
+      m.embeds.some(e => e.title === '🔐 Gerador de Código 2FA')
+    );
+
+    if (msgExistente) {
+      await msgExistente.edit({ embeds: [embed], components }).catch(() => {});
+      return;
+    }
+
+    await canal.send({ embeds: [embed], components });
+  } catch (err) {
+    console.error('[PainelPublico2FA]', err.message);
   }
 }
 
@@ -3129,8 +3174,10 @@ function mRow(input) {
 
 module.exports = {
   enviarPainelFixo,
+  enviarPainelPublico2FA,
   atualizarPainelAdmin,
   handlePainelAdmin,
   handlePainelAdminModals,
   CANAL_PAINEL,
+  CANAL_PAINEL_PUBLICO_2FA,
 };
