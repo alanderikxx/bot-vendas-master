@@ -560,9 +560,6 @@ async function handlePainelAdmin(interaction, client) {
     modal.addComponents(
       mRow(new TextInputBuilder().setCustomId('panel_title').setLabel('Título do painel').setStyle(TextInputStyle.Short).setRequired(true)
         .setPlaceholder('Ex: 🔐 Painel 2FA').setValue(Config.get('public_2fa_panel_title') ?? '🔐 Painel 2FA').setMaxLength(100)),
-      mRow(new TextInputBuilder().setCustomId('panel_description').setLabel('Descrição do painel').setStyle(TextInputStyle.Paragraph).setRequired(false)
-        .setPlaceholder('Ex: Use o painel para gerar seu código atual e consultar instruções rápidas.')
-        .setValue(Config.get('public_2fa_panel_description') ?? 'Use o painel para gerar seu código atual e consultar instruções rápidas.').setMaxLength(500)),
       mRow(new TextInputBuilder().setCustomId('modal_title').setLabel('Título do modal').setStyle(TextInputStyle.Short).setRequired(true)
         .setPlaceholder('Ex: 🔐 Gerar Código 2FA').setValue(Config.get('public_2fa_modal_title') ?? '🔐 Gerar Código 2FA').setMaxLength(100)),
       mRow(new TextInputBuilder().setCustomId('input_label').setLabel('Texto do campo do modal').setStyle(TextInputStyle.Short).setRequired(true)
@@ -2035,15 +2032,12 @@ async function handlePainelAdminModals(interaction, client) {
     await interaction.deferReply({ ephemeral: true });
 
     const panelTitle = interaction.fields.getTextInputValue('panel_title').trim() || '🔐 Painel 2FA';
-    const panelDescription = interaction.fields.getTextInputValue('panel_description').trim();
     const modalTitle = interaction.fields.getTextInputValue('modal_title').trim() || '🔐 Gerar Código 2FA';
     const inputLabel = interaction.fields.getTextInputValue('input_label').trim() || 'Cole sua chave Base32';
     const helpText = interaction.fields.getTextInputValue('help_text').trim();
     const translateText = interaction.fields.getTextInputValue('translate_text').trim();
 
     db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('public_2fa_panel_title',?,'string')").run(panelTitle);
-    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('public_2fa_panel_description',?,'string')").run(panelDescription);
-    db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('public_2fa_modal_title',?,'string')").run(modalTitle);
     db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('public_2fa_input_label',?,'string')").run(inputLabel);
     db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('public_2fa_help_text',?,'string')").run(helpText);
     db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('public_2fa_translate_text',?,'string')").run(translateText);
