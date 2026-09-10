@@ -13,6 +13,7 @@ const config  = require('../config');
 const moment  = require('moment-timezone');
 
 const CANAL_PAINEL = '1533638769901703178';
+const CANAL_PAINEL_2FA = '1534449168750215219';
 
 // ─── Cache de stats (TTL 30s) ─────────────────────────────────────────────────
 let _statsCache = null;
@@ -416,8 +417,8 @@ function buildAfiliadosMenu() {
 
 async function enviarPainelPublico2FA(guild) {
   try {
-    const canal = guild.channels.cache.get(CANAL_PAINEL);
-    if (!canal) return console.error('[PainelAdmin] Canal do painel 2FA não encontrado:', CANAL_PAINEL);
+    const canal = guild.channels.cache.get(CANAL_PAINEL_2FA);
+    if (!canal) return console.error('[PainelAdmin] Canal do painel 2FA não encontrado:', CANAL_PAINEL_2FA);
 
     const titulo = Config.get('public_2fa_panel_title') ?? '🔐 Painel 2FA';
     const descricao = Config.get('public_2fa_panel_description') ?? 'Use o painel para gerar seu código atual e consultar instruções rápidas.';
