@@ -6,6 +6,7 @@ const {
   remove2FAAccount,
   list2FAAccounts,
   generate2FACode,
+  generate2FACodeFromSecret,
   generateAll2FACodes,
 } = require('../2fa');
 
@@ -79,15 +80,27 @@ module.exports = {
           const ajuda = [
             '🔐 Comandos do 2FA:',
             '',
+            '!2fa <secret>             → gera um código direto da chave',
             '!2fa add <nome> <secret>   → salva uma conta',
             '!2fa gerar <nome>          → gera o código atual',
             '!2fa listar                → lista contas salvas',
             '!2fa todos                 → gera todos os códigos',
             '!2fa remover <nome>        → remove uma conta',
             '',
-            'Exemplo: !2fa add Google JBSWY3DPEHPK3PXP',
+            'Exemplo: !2fa I7YFCQEIZEOBNOZNM34JLZVJ6M',
           ].join('\n');
           await message.reply(ajuda);
+          return;
+        }
+
+        if (!['add', 'listar', 'gerar', 'todos', 'remover'].includes(sub)) {
+          const secret = args[1];
+          if (!secret) {
+            await message.reply('❌ Uso correto: `!2fa <secret>` ou `!2fa add <nome> <secret>`');
+            return;
+          }
+          const codigo = generate2FACodeFromSecret(secret, 'Código 2FA');
+          await message.reply(`🔐 Código gerado\n\n\`\`\`\n${codigo.token}\n\`\`\`\n\n⏳ Expira em: **${codigo.remaining}s**`);
           return;
         }
 

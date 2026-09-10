@@ -107,15 +107,25 @@ function generate2FACode(userId, label) {
     throw new Error(`Conta "${trimmedLabel}" não encontrada.`);
   }
 
+  return generate2FACodeFromSecret(secret, trimmedLabel);
+}
+
+function generate2FACodeFromSecret(secret, label = '2FA') {
+  const trimmedSecret = String(secret || '').trim();
+
+  if (!trimmedSecret) {
+    throw new Error('Informe a chave secreta Base32 da conta 2FA.');
+  }
+
   const token = speakeasy.totp({
-    secret,
+    secret: trimmedSecret,
     encoding: 'base32',
   });
 
   const remaining = 30 - Math.floor((Date.now() / 1000) % 30);
 
   return {
-    label: trimmedLabel,
+    label: String(label || '2FA').trim() || '2FA',
     token,
     remaining,
   };
@@ -131,5 +141,6 @@ module.exports = {
   remove2FAAccount,
   list2FAAccounts,
   generate2FACode,
+  generate2FACodeFromSecret,
   generateAll2FACodes,
 };

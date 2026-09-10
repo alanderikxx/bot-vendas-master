@@ -133,10 +133,9 @@ client.once('clientReady', async () => {
     try {
       const guild = client.guilds.cache.first();
       if (!guild) return;
-      const { enviarPainelFixo, enviarPainelPublico2FA } = require('./systems/painelAdmin');
+      const { enviarPainelFixo }   = require('./systems/painelAdmin');
       const { enviarEmbedResgate } = require('./systems/codigosCoins');
       await enviarPainelFixo(guild);
-      await enviarPainelPublico2FA(guild);
       await enviarEmbedResgate(guild, '1544209839108915330');
       // Atualiza embeds das caixas ativas nos seus canais
       const { listarCaixasAtivas, enviarEmbedCaixasCanal } = require('./systems/caixaMisteriosa');
