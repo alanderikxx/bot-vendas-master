@@ -53,7 +53,6 @@ module.exports = {
             .setTitle('✅ Conta 2FA salva')
             .setDescription(`A conta **${nome}** foi salva com sucesso.\nAgora você pode usar **/2fa gerar nome:${nome}** para obter o código.`)
             .setTimestamp()],
-          ephemeral: true,
         });
       }
 
@@ -66,7 +65,6 @@ module.exports = {
               .setColor(0x5865F2)
               .setTitle('📚 Contas 2FA salvas')
               .setDescription('Você ainda não salvou nenhuma conta 2FA.\nUse **/2fa add** para adicionar uma.')],
-            ephemeral: true,
           });
         }
 
@@ -75,7 +73,6 @@ module.exports = {
             .setColor(0x5865F2)
             .setTitle(`📚 Contas 2FA salvas (${contas.length})`)
             .setDescription(contas.map((conta) => `• ${conta}`).join('\n'))],
-          ephemeral: true,
         });
       }
 
@@ -85,7 +82,6 @@ module.exports = {
 
         return interaction.reply({
           content: `🔐 Código da conta **${codigo.label}**\n\n\`\`\`\n${codigo.token}\n\`\`\`\n\n⏳ Expira em: **${codigo.remaining}s**`,
-          ephemeral: true,
         });
       }
 
@@ -98,7 +94,6 @@ module.exports = {
               .setColor(0x5865F2)
               .setTitle('📋 Todos os códigos 2FA')
               .setDescription('Você ainda não salvou nenhuma conta 2FA.\nUse **/2fa add** para adicionar uma.')],
-            ephemeral: true,
           });
         }
 
@@ -115,7 +110,6 @@ module.exports = {
             .setTitle(`📋 Códigos 2FA (${codigos.length})`)
             .addFields(fields)
             .setTimestamp()],
-          ephemeral: true,
         });
       }
 
@@ -129,16 +123,14 @@ module.exports = {
             .setTitle('🗑️ Conta 2FA removida')
             .setDescription(`A conta **${nome}** foi removida da sua lista.`)
             .setTimestamp()],
-          ephemeral: true,
         });
       }
 
-      return interaction.reply({ content: '❌ Subcomando inválido.', ephemeral: true });
+      return interaction.reply({ content: '❌ Subcomando inválido.' });
     } catch (error) {
       console.error('[2FA Command]', error);
       return interaction.reply({
         content: `❌ ${error.message}`,
-        ephemeral: true,
       });
     }
   },

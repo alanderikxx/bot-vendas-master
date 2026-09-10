@@ -73,13 +73,6 @@ module.exports = {
     if (message.content.toLowerCase().startsWith('!2fa')) {
       const args = message.content.trim().split(/\s+/);
       const sub = (args[1] || 'help').toLowerCase();
-      const enviarDm = async (texto) => {
-        try {
-          await message.author.send(texto);
-        } catch {
-          await message.reply(texto);
-        }
-      };
 
       try {
         if (sub === 'help' || sub === 'ajuda') {
@@ -94,7 +87,7 @@ module.exports = {
             '',
             'Exemplo: !2fa add Google JBSWY3DPEHPK3PXP',
           ].join('\n');
-          await enviarDm(ajuda);
+          await message.reply(ajuda);
           return;
         }
 
@@ -102,61 +95,61 @@ module.exports = {
           const nome = args[2];
           const secret = args.slice(3).join(' ');
           if (!nome || !secret) {
-            await enviarDm('❌ Uso correto: `!2fa add <nome> <secret>`');
+            await message.reply('❌ Uso correto: `!2fa add <nome> <secret>`');
             return;
           }
           add2FAAccount(message.author.id, nome, secret);
-          await enviarDm(`✅ Conta **${nome}** salva com sucesso.`);
+          await message.reply(`✅ Conta **${nome}** salva com sucesso.`);
           return;
         }
 
         if (sub === 'listar') {
           const contas = list2FAAccounts(message.author.id);
           if (!contas.length) {
-            await enviarDm('📚 Você ainda não salvou nenhuma conta 2FA.');
+            await message.reply('📚 Você ainda não salvou nenhuma conta 2FA.');
             return;
           }
-          await enviarDm(`📚 Contas salvas:\n${contas.map(c => `• ${c}`).join('\n')}`);
+          await message.reply(`📚 Contas salvas:\n${contas.map(c => `• ${c}`).join('\n')}`);
           return;
         }
 
         if (sub === 'gerar') {
           const nome = args[2];
           if (!nome) {
-            await enviarDm('❌ Uso correto: `!2fa gerar <nome>`');
+            await message.reply('❌ Uso correto: `!2fa gerar <nome>`');
             return;
           }
           const codigo = generate2FACode(message.author.id, nome);
-          await enviarDm(`🔐 Código da conta **${codigo.label}**\n\n\`\`\`\n${codigo.token}\n\`\`\`\n\n⏳ Expira em: **${codigo.remaining}s**`);
+          await message.reply(`🔐 Código da conta **${codigo.label}**\n\n\`\`\`\n${codigo.token}\n\`\`\`\n\n⏳ Expira em: **${codigo.remaining}s**`);
           return;
         }
 
         if (sub === 'todos') {
           const contas = list2FAAccounts(message.author.id);
           if (!contas.length) {
-            await enviarDm('📋 Você ainda não salvou nenhuma conta 2FA.');
+            await message.reply('📋 Você ainda não salvou nenhuma conta 2FA.');
             return;
           }
           const codigos = generateAll2FACodes(message.author.id);
           const texto = codigos.map(c => `🔑 ${c.label}\n\`\`\`\n${c.token}\n\`\`\`\nExpira em: ${c.remaining}s`).join('\n\n');
-          await enviarDm(`📋 Códigos 2FA:\n\n${texto}`);
+          await message.reply(`📋 Códigos 2FA:\n\n${texto}`);
           return;
         }
 
         if (sub === 'remover') {
           const nome = args[2];
           if (!nome) {
-            await enviarDm('❌ Uso correto: `!2fa remover <nome>`');
+            await message.reply('❌ Uso correto: `!2fa remover <nome>`');
             return;
           }
           remove2FAAccount(message.author.id, nome);
-          await enviarDm(`🗑️ Conta **${nome}** removida com sucesso.`);
+          await message.reply(`🗑️ Conta **${nome}** removida com sucesso.`);
           return;
         }
 
-        await enviarDm('❌ Comando inválido. Use `!2fa help`.');
+        await message.reply('❌ Comando inválido. Use `!2fa help`.');
       } catch (error) {
-        await enviarDm(`❌ ${error.message}`);
+        await message.reply(`❌ ${error.message}`);
       }
       return;
     }

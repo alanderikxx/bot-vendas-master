@@ -34,13 +34,11 @@ module.exports = async (interaction, client) => {
       const codigo = generate2FACode(interaction.user.id, contas[0]);
       return interaction.reply({
         content: `🔐 Código da conta **${codigo.label}**\n\n\`\`\`\n${codigo.token}\n\`\`\`\n\n⏳ Expira em: **${codigo.remaining}s**`,
-        ephemeral: true,
       });
     }
 
     return interaction.reply({
-      content: `📚 Você tem **${contas.length}** contas salvas.\nUse ` + '`!2fa gerar <nome>`' + ` no privado do bot para escolher qual código gerar.`,
-      ephemeral: true,
+      content: `📚 Você tem **${contas.length}** contas salvas.\nUse ` + '`!2fa gerar <nome>`' + ` no canal para escolher qual código gerar.`,
     });
   }
 
