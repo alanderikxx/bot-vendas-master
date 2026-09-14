@@ -10,6 +10,10 @@ const { log }        = require('../utils/logger');
 const { Embeds }     = require('../utils/embeds');
 const efi            = require('./efi');
 const antiFraude     = require('./antiFraude');
+const {
+  pedidosPendentesDoTicket, totalGrupoPedidos, descricaoGrupoPedidos,
+  aplicarTxIdGrupo, marcarGrupoPago, ticketAindaTemItensAbertos,
+} = require('../utils/pedidoGrupo');
 
 // ─── Mostrar loja ─────────────────────────────────────────────────────────────
 async function mostrarLoja(interaction, pagina = 0) {
@@ -207,16 +211,18 @@ async function gerarPixPedido(interaction, pedidoId, client) {
   const produto = Produtos.get(pedido.produto_id);
   const { t, getIdioma } = require('./i18n');
   const idioma = getIdioma(pedido.usuario_id);
+  const valorPix = totalGrupoPedidos(pedido);
+  const nomesPix = descricaoGrupoPedidos(pedido);
 
   let cobranca, qrData;
   try {
     cobranca = await efi.criarCobrancaPix({
-      valor:       pedido.valor_total,
-      descricao:   `Máximo Store - ${produto?.nome || 'Produto'}`,
+      valor:       valorPix,
+      descricao:   `Máximo Store - ${nomesPix}`.slice(0, 140),
       pedidoId,
       nomeCliente: interaction.user.username,
     });
-    Pedidos.atualizar(pedidoId, { tx_id: cobranca.txid });
+    aplicarTxIdGrupo(pedido, cobranca.txid);
     // locId é o ID numérico do location — obrigatório para gerar QR Code
     qrData = await efi.gerarQRCode(cobranca.locId);
   } catch (err) {
@@ -232,8 +238,8 @@ async function gerarPixPedido(interaction, pedidoId, client) {
     .setColor(config.colors.pix)
     .setTitle(t('pix_title', idioma))
     .setDescription([
-      `📦 **${t('delivery_product', idioma)}:** ${produto?.nome}`,
-      `💵 **${t('delivery_value', idioma)}:** R$ ${pedido.valor_total.toFixed(2)}`,
+      `📦 **${t('delivery_product', idioma)}:** ${nomesPix || produto?.nome}`,
+      `💵 **${t('delivery_value', idioma)}:** R$ ${valorPix.toFixed(2)}`,
       `🆔 **${t('delivery_order', idioma)}:** \`${pedidoId.slice(0,8).toUpperCase()}\``,
       '',
       t('pix_expires', idioma),
@@ -271,13 +277,14 @@ async function pagarComCoins(interaction, pedidoId, client) {
 
   const usuario = Usuarios.get(pedido.usuario_id);
   const coins   = usuario?.coins || 0;
-  const coinsNecessarios = Math.ceil(pedido.valor_total / 0.01);
+  const valorGrupo = totalGrupoPedidos(pedido);
+  const coinsNecessarios = Math.ceil(valorGrupo / 0.01);
 
   if (coins < coinsNecessarios) {
     return interaction.editReply({
       content: [
         `❌ Coins insuficientes!`,
-        `💵 Valor: R$ ${pedido.valor_total.toFixed(2)} = **${coinsNecessarios.toLocaleString('pt-BR')} coins**`,
+        `💵 Valor: R$ ${valorGrupo.toFixed(2)} = **${coinsNecessarios.toLocaleString('pt-BR')} coins**`,
         `🪙 Você tem: **${coins.toLocaleString('pt-BR')} coins**`,
         `❗ Faltam: **${(coinsNecessarios - coins).toLocaleString('pt-BR')} coins**`,
       ].join('\n'),
@@ -295,13 +302,8 @@ async function pagarComCoins(interaction, pedidoId, client) {
   db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now'), nota_fiscal=? WHERE id=?")
     .run(JSON.stringify(notaNova), pedidoId);
 
+  marcarGrupoPago(pedido);
   const pedidoAtualizado = Pedidos.get(pedidoId);
-
-  // Marcar outros pedidos do mesmo ticket como pagos (carrinho multi-produto)
-  if (pedido.ticket_id) {
-    db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE ticket_id=? AND id!=? AND status='pendente'")
-      .run(pedido.ticket_id, pedidoId);
-  }
 
   // Usar processarEntrega que entrega este + todos os outros do ticket
   // O fecharTicketAutomatico dentro de entregarProduto cuida do transcript + fechamento
@@ -320,7 +322,7 @@ async function pagarComCoins(interaction, pedidoId, client) {
       .setTimestamp()],
   });
 
-  await log('pagamento', { usuario: pedido.usuario_id, valor: pedido.valor_total, pedidoId, descricao: `Pago com ${coinsNecessarios} coins` });
+  await log('pagamento', { usuario: pedido.usuario_id, valor: valorGrupo, pedidoId, descricao: `Pago com ${coinsNecessarios} coins` });
 }
 
 // ─── Compra via variante (painel de produto) ──────────────────────────────────
@@ -672,7 +674,7 @@ async function entregarProduto(pedido, client) {
 
     // ── Fechar ticket automaticamente com transcript ──────────────────────
     try {
-      if (pedido.ticket_id) {
+      if (pedido.ticket_id && !ticketAindaTemItensAbertos(pedido.ticket_id, pedido.id)) {
         const { fecharTicketAutomatico } = require('./tickets');
         await fecharTicketAutomatico(guild, pedido.ticket_id, null, 'Pagamento confirmado e produto entregue');
       }
@@ -690,59 +692,66 @@ async function liberarPedidoManual(interaction, pedidoId, client) {
 
   await interaction.deferReply({ ephemeral: false });
 
-  // Preservar nota_fiscal original (tem o varianteId) e só marcar como manual
-  const notaOriginal = (() => { try { return pedido.nota_fiscal ? JSON.parse(pedido.nota_fiscal) : {}; } catch { return {}; } })();
-  const notaNova = { ...notaOriginal, manual: true, autorizadoPor: interaction.user.id };
+  const grupo = pedidosPendentesDoTicket(pedido);
+  const entregues = [];
 
-  db.prepare("UPDATE pedidos SET status='entregue', pago_em=strftime('%s','now'), entregue_em=strftime('%s','now'), nota_fiscal=? WHERE id=?")
-    .run(JSON.stringify(notaNova), pedidoId);
+  for (const pedidoAtual of grupo) {
+    const notaOriginal = (() => { try { return pedidoAtual.nota_fiscal ? JSON.parse(pedidoAtual.nota_fiscal) : {}; } catch { return {}; } })();
+    const notaNova = { ...notaOriginal, manual: true, autorizadoPor: interaction.user.id };
 
-  // Entregar o item do estoque sem contar como venda (sem atualizar stats do usuário)
-  const pedidoAtualizado = Pedidos.get(pedidoId);
-  const produto = Produtos.get(pedidoAtualizado.produto_id);
-  let conteudo = null;
+    db.prepare("UPDATE pedidos SET status='entregue', pago_em=strftime('%s','now'), entregue_em=strftime('%s','now'), nota_fiscal=? WHERE id=?")
+      .run(JSON.stringify(notaNova), pedidoAtual.id);
 
-  try {
-    const nota = notaNova;
-    const varianteId = nota?.varianteId;
-    const qtd = Math.max(1, parseInt(pedidoAtualizado.quantidade) || 1);
+    const pedidoAtualizado = Pedidos.get(pedidoAtual.id);
+    const produto = Produtos.get(pedidoAtualizado.produto_id);
+    let conteudo = null;
 
-    if (varianteId) {
-      const { pegarItemVariante } = require('./painelProduto');
-      const itens = [];
-      for (let i = 0; i < qtd; i++) {
-        const item = pegarItemVariante(varianteId, pedidoAtualizado.usuario_id, pedidoId);
-        if (item) itens.push(item);
-        else break;
+    try {
+      const nota = notaNova;
+      const varianteId = nota?.varianteId;
+      const qtd = Math.max(1, parseInt(pedidoAtualizado.quantidade) || 1);
+
+      if (varianteId) {
+        const { pegarItemVariante } = require('./painelProduto');
+        const itens = [];
+        for (let i = 0; i < qtd; i++) {
+          const item = pegarItemVariante(varianteId, pedidoAtualizado.usuario_id, pedidoAtual.id);
+          if (item) itens.push(item);
+          else break;
+        }
+        conteudo = itens.length > 0 ? itens.join('\n') : null;
       }
-      conteudo = itens.length > 0 ? itens.join('\n') : null;
+
+      if (!conteudo) {
+        const item = db.prepare('SELECT * FROM estoque_digital WHERE produto_id=? AND usado=0 LIMIT 1').get(pedidoAtualizado.produto_id);
+        if (item) {
+          db.prepare("UPDATE estoque_digital SET usado=1,usado_por=?,usado_em=strftime('%s','now'),pedido_id=? WHERE id=?")
+            .run(pedidoAtualizado.usuario_id, pedidoAtual.id, item.id);
+          conteudo = item.conteudo;
+        }
+      }
+
+      db.prepare('UPDATE pedidos SET conteudo_entregue=? WHERE id=?').run(conteudo || 'Entregue manualmente', pedidoAtual.id);
+    } catch (err) {
+      console.error('[LiberarManual]', err.message);
     }
 
-    if (!conteudo) {
-      // Fallback estoque global
-      const item = db.prepare('SELECT * FROM estoque_digital WHERE produto_id=? AND usado=0 LIMIT 1').get(pedidoAtualizado.produto_id);
-      if (item) {
-        db.prepare("UPDATE estoque_digital SET usado=1,usado_por=?,usado_em=strftime('%s','now'),pedido_id=? WHERE id=?")
-          .run(pedidoAtualizado.usuario_id, pedidoId, item.id);
-        conteudo = item.conteudo;
-      }
-    }
-
-    db.prepare('UPDATE pedidos SET conteudo_entregue=? WHERE id=?').run(conteudo || 'Entregue manualmente', pedidoId);
-  } catch (err) {
-    console.error('[LiberarManual]', err.message);
+    entregues.push({ pedidoId: pedidoAtualizado.id, produto, conteudo: conteudo || 'Entregue manualmente' });
   }
 
-  // Enviar produto no privado do cliente
-  const guild  = client || interaction.client;
+  const guild = client || interaction.client;
   const guildObj = guild?.guilds?.cache?.first();
-  if (guildObj && conteudo) {
+  if (guildObj && entregues.length) {
     const member = await guildObj.members.fetch(pedido.usuario_id).catch(() => null);
     if (member) {
       const { t, getIdioma, btnIdioma } = require('./i18n');
       const idioma = getIdioma(pedido.usuario_id);
+      const totalConteudo = entregues
+        .map((item, index) => `**${index + 1}. ${item.produto?.nome || 'Produto'}**\n${item.conteudo}`)
+        .join('\n\n');
+
       const chunks = [];
-      let resto = conteudo;
+      let resto = totalConteudo;
       while (resto.length > 0) { chunks.push(resto.slice(0, 900)); resto = resto.slice(900); }
 
       const embed = new EmbedBuilder()
@@ -750,8 +759,8 @@ async function liberarPedidoManual(interaction, pedidoId, client) {
         .setTitle(t('delivery_title', idioma))
         .setDescription(t('delivery_thanks', idioma, member.displayName))
         .addFields(
-          { name: t('delivery_product', idioma), value: `**${produto?.nome || '—'}**`, inline: true },
-          { name: t('delivery_order',   idioma), value: `\`${pedidoId.slice(0,8).toUpperCase()}\``, inline: true },
+          { name: t('delivery_product', idioma), value: `**${entregues.map(e => e.produto?.nome || 'Produto').join(', ')}**`, inline: true },
+          { name: t('delivery_order', idioma), value: `\`${pedidoId.slice(0,8).toUpperCase()}\``, inline: true },
         )
         .setTimestamp()
         .setFooter({ text: t('delivery_footer', idioma) });
@@ -761,8 +770,8 @@ async function liberarPedidoManual(interaction, pedidoId, client) {
       }
 
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`confirmar_entrega_${pedidoId}`).setLabel(t('delivery_confirm', idioma)).setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`avaliar_${pedidoId}`).setLabel(t('delivery_rate', idioma)).setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`confirmar_entrega_${entregues[0].pedidoId}`).setLabel(t('delivery_confirm', idioma)).setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`avaliar_${entregues[0].pedidoId}`).setLabel(t('delivery_rate', idioma)).setStyle(ButtonStyle.Secondary),
         btnIdioma(idioma),
       );
       await member.send({ embeds: [embed], components: [row] }).catch(() => {});
@@ -775,23 +784,22 @@ async function liberarPedidoManual(interaction, pedidoId, client) {
       .setTitle('✅ Liberado e Entregue!')
       .setDescription([
         `Pedido \`${pedidoId.slice(0,8).toUpperCase()}\` liberado por <@${interaction.user.id}>.`,
-        `📦 Produto entregue no **privado** do cliente <@${pedido.usuario_id}>.`,
+        `📦 ${entregues.length} item(ns) entregue(s) no **privado** do cliente <@${pedido.usuario_id}>.`,
       ].join('\n'))
       .setTimestamp()],
   });
 
-  // Avisar no ticket que foi entregue
   if (interaction.channel) {
     const tickets = require('../database/database').Tickets;
     const ticket = tickets.get(interaction.channel.id);
     if (ticket) {
       await interaction.channel.send({
-        content: `✅ <@${pedido.usuario_id}> Produto entregue no seu privado! Verifique suas DMs.`,
+        content: `✅ <@${pedido.usuario_id}> ${entregues.length} item(ns) liberado(s) no seu privado! Verifique suas DMs.`,
       }).catch(() => {});
     }
   }
 
-  await log('pagamento', { executor: interaction.user.id, usuario: pedido.usuario_id, pedidoId, descricao: `Liberado e entregue manualmente por ${interaction.user.tag}` });
+  await log('pagamento', { executor: interaction.user.id, usuario: pedido.usuario_id, pedidoId, descricao: `Liberado e entregue manualmente por ${interaction.user.tag} (${entregues.length} itens)` });
 }
 
 // ─── Boleto ───────────────────────────────────────────────────────────────────
@@ -855,11 +863,9 @@ async function processarEntrega(pedido, client) {
       const { entregarCoins } = require('./coins');
       return await entregarCoins(pedido, client);
     } else {
-      // Entregar este pedido
       await entregarProduto(pedido, client);
 
-      // Se é carrinho multi-produto, entregar os outros pedidos do mesmo ticket
-      if (nota?.carrinhoMulti && pedido.ticket_id) {
+      if (pedido.ticket_id) {
         const outrosPedidos = db.prepare(`
           SELECT * FROM pedidos
           WHERE ticket_id=? AND id!=? AND status='pago'
@@ -891,22 +897,126 @@ function iniciarPollingPagamento(pedidoId, txid, guild, client) {
         clearInterval(interval);
         const p = Pedidos.get(pedidoId);
         if (p?.status === 'pendente') {
-          db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE id=?").run(pedidoId);
+          marcarGrupoPago(p);
           await processarEntrega(Pedidos.get(pedidoId), client);
         }
       }
       if (tentativas >= 36) {
         clearInterval(interval);
         const p = Pedidos.get(pedidoId);
-        if (p?.status === 'pendente') Pedidos.atualizar(pedidoId, { status: 'cancelado', motivo_cancel: 'Tempo expirado' });
+        if (p?.status === 'pendente') {
+          const { marcarGrupoCancelado } = require('../utils/pedidoGrupo');
+          marcarGrupoCancelado(p, null, 'Tempo expirado');
+        }
       }
     } catch (err) { console.error('[Polling PIX]', err.message); }
   }, 50000);
 }
 
+// ─── Compra de todos os itens do carrinho (/carrinho) ─────────────────────────
+async function iniciarCompraCarrinho(interaction, client) {
+  const { listarCarrinho, calcularTotal, limparCarrinho } = require('./carrinho');
+  const itens = listarCarrinho(interaction.user.id);
+  if (!itens.length) return interaction.editReply({ content: '🛒 Carrinho vazio.' });
+
+  if (Config.get('manutencao') === true) {
+    return interaction.editReply({ content: '🔧 A loja está em **manutenção** no momento. Tente novamente em breve!' });
+  }
+
+  const usuario = Usuarios.garantir(interaction.user.id, interaction.user.username);
+  if (usuario.bloqueado) return interaction.editReply({ content: '🚫 Conta bloqueada. Contate o suporte.' });
+
+  const fraude = antiFraude.verificar(interaction.user.id);
+  if (fraude.bloqueado) return interaction.editReply({ content: `🚫 ${fraude.mensagem}` });
+
+  for (const item of itens) {
+    if (!item.ativo) {
+      return interaction.editReply({ content: `❌ **${item.nome}** não está mais disponível.` });
+    }
+    if (!Produtos.temEstoque(item.produto_id, item.quantidade)) {
+      return interaction.editReply({ content: `❌ **${item.nome}** sem estoque suficiente.` });
+    }
+  }
+
+  const { v4: uuidv4 } = require('uuid');
+  const total = calcularTotal(itens);
+  const pedidoIds = [];
+
+  let afiliadoId = null;
+  if (usuario.afiliado_de) afiliadoId = usuario.afiliado_de;
+  const taxa = parseFloat(db.prepare("SELECT valor FROM configuracoes WHERE chave='taxa_afiliado'").get()?.valor || '5');
+
+  for (const item of itens) {
+    const preco = item.preco_promo || item.preco;
+    const subtotal = preco * item.quantidade;
+    const comissao = afiliadoId ? subtotal * taxa / 100 : 0;
+    const pedidoId = uuidv4();
+    db.prepare(`
+      INSERT INTO pedidos (id,usuario_id,produto_id,quantidade,valor_unit,valor_total,desconto,afiliado_id,comissao_afil,metodo_pag,nota_fiscal,status)
+      VALUES (?,?,?,?,?,?,0,?,?,'pix',?,'pendente')
+    `).run(
+      pedidoId, interaction.user.id, item.produto_id, item.quantidade,
+      preco, subtotal,
+      afiliadoId || null, comissao,
+      JSON.stringify({ carrinhoMulti: true }),
+    );
+    pedidoIds.push(pedidoId);
+  }
+
+  const resumoProdutos = itens.map(i => `${i.nome} (${i.quantidade}x)`).join(', ');
+  const pedidoPrincipal = pedidoIds[0];
+
+  const { abrirTicket } = require('./tickets');
+  const memberObj = interaction.member
+    || await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+  const { ok, canal } = await abrirTicket(interaction.guild, memberObj, 'compra', {
+    pedidoId:  pedidoPrincipal,
+    produtoId: itens[0].produto_id,
+    produto:   resumoProdutos,
+    valor:     total,
+    usuarioId: interaction.user.id,
+  });
+
+  if (ok) {
+    for (const pid of pedidoIds) {
+      db.prepare('UPDATE pedidos SET ticket_id=? WHERE id=?').run(canal.id, pid);
+    }
+  }
+
+  limparCarrinho(interaction.user.id);
+  antiFraude.registrarTentativa(interaction.user.id);
+
+  if (ok && canal) {
+    return interaction.editReply({
+      embeds: [new EmbedBuilder()
+        .setColor(config.colors.success)
+        .setTitle('✅ Ticket Aberto!')
+        .setDescription([
+          `> Seu ticket foi criado em ${canal}.`,
+          `> Escolha a forma de pagamento lá para finalizar a compra.`,
+        ].join('\n'))
+        .addFields(
+          { name: '📦 Itens', value: resumoProdutos.slice(0, 200), inline: false },
+          { name: '💵 Total', value: `R$ ${total.toFixed(2)}`, inline: true },
+          { name: '📋 Pedidos', value: String(pedidoIds.length), inline: true },
+        )
+        .setTimestamp()
+        .setFooter({ text: 'Máximo Store • Carrinho' })],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel('🎫 Ir para o Ticket')
+          .setStyle(ButtonStyle.Link)
+          .setURL(`https://discord.com/channels/${interaction.guild?.id}/${canal.id}`),
+      )],
+    });
+  }
+
+  return interaction.editReply({ content: '❌ Erro ao abrir ticket. Tente novamente.' });
+}
+
 module.exports = {
   mostrarLoja, mostrarProduto,
-  iniciarCompra, iniciarCompraVariante,
+  iniciarCompra, iniciarCompraVariante, iniciarCompraCarrinho,
   gerarPixPedido, pagarComCoins, liberarPedidoManual,
   iniciarCompraBoleto, processarCompraBoleto,
   entregarProduto, processarEntrega, iniciarPollingPagamento,

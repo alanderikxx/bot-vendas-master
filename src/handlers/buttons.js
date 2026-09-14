@@ -312,7 +312,7 @@ module.exports = async (interaction, client) => {
           `> **BRL** usa PIX instantâneo.`,
           `> **Outras moedas** usam Stripe (cartão de crédito).`,
           '',
-          `💵 **Valor:** R$ ${Number(pedido.valor_total).toFixed(2)}`,
+          `💵 **Valor:** R$ ${Number(require('../utils/pedidoGrupo').totalGrupoPedidos(pedido)).toFixed(2)}`,
         ].join('\n'))
         .setFooter({ text: 'Máximo Store • Pagamento seguro' })],
       components: [selectRow],
@@ -337,12 +337,8 @@ module.exports = async (interaction, client) => {
       const status = await stripe.consultarSessao(consultarId);
       if (status.pago) {
         const pedidoAtual = Pedidos.get(pedidoId);
-        db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE id=?").run(pedidoId);
-        // Marcar outros pedidos do mesmo ticket como pagos (carrinho multi-produto)
-        if (pedidoAtual?.ticket_id) {
-          db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE ticket_id=? AND id!=? AND status='pendente'")
-            .run(pedidoAtual.ticket_id, pedidoId);
-        }
+        const { marcarGrupoPago } = require('../utils/pedidoGrupo');
+        marcarGrupoPago(pedidoAtual || pedido);
         const { processarEntrega } = require('../systems/loja');
         await processarEntrega(Pedidos.get(pedidoId), client);
         if (interaction.message) await interaction.message.delete().catch(() => {});
@@ -415,12 +411,8 @@ module.exports = async (interaction, client) => {
         const status = await efi.consultarCobranca(pedido.tx_id);
         if (status.pago) {
           // Marcar pedido como pago e entregar
-          db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE id=?").run(pedidoId);
-          // Marcar outros pedidos do mesmo ticket (carrinho multi-produto)
-          if (pedido.ticket_id) {
-            db.prepare("UPDATE pedidos SET status='pago', pago_em=strftime('%s','now') WHERE ticket_id=? AND id!=? AND status='pendente'")
-              .run(pedido.ticket_id, pedidoId);
-          }
+          const { marcarGrupoPago } = require('../utils/pedidoGrupo');
+          marcarGrupoPago(pedido);
           const pedidoAtualizado = Pedidos.get(pedidoId);
           const { processarEntrega } = require('../systems/loja');
           await processarEntrega(pedidoAtualizado, client);
@@ -652,7 +644,7 @@ module.exports = async (interaction, client) => {
     if (pedido.status !== 'pendente') return interaction.reply({ content: '⚠️ Este pedido não pode ser cancelado.', ephemeral: true });
 
     // Confirmação antes de cancelar
-    const produto = Produtos.get(pedido.produto_id);
+    const { totalGrupoPedidos, descricaoGrupoPedidos } = require('../utils/pedidoGrupo');
     const rowConf = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`conf_cancelar_${pedidoId}`).setLabel('✅ Sim, cancelar').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId(`nao_cancelar_${pedidoId}`).setLabel('❌ Não, voltar').setStyle(ButtonStyle.Secondary),
@@ -666,8 +658,8 @@ module.exports = async (interaction, client) => {
           `> Esta ação não pode ser desfeita.`,
         ].join('\n'))
         .addFields(
-          { name: '📦 Produto', value: produto?.nome || '—', inline: true },
-          { name: '💵 Valor',   value: `R$ ${Number(pedido.valor_total).toFixed(2)}`, inline: true },
+          { name: '📦 Produto', value: descricaoGrupoPedidos(pedido) || '—', inline: true },
+          { name: '💵 Valor',   value: `R$ ${Number(totalGrupoPedidos(pedido)).toFixed(2)}`, inline: true },
         )
         .setTimestamp()],
       components: [rowConf],
@@ -682,12 +674,8 @@ module.exports = async (interaction, client) => {
     if (!pedido || pedido.status !== 'pendente') return interaction.reply({ content: '⚠️ Pedido não pode mais ser cancelado.', ephemeral: true });
     if (pedido.usuario_id !== interaction.user.id && !isStaff(interaction.member)) return interaction.reply({ content: '❌ Sem permissão.', ephemeral: true });
 
-    Pedidos.atualizar(pedidoId, {
-      status: 'cancelado',
-      cancelado_por: interaction.user.id,
-      motivo_cancel: 'Cancelado pelo usuário',
-      cancelado_em: Math.floor(Date.now() / 1000),
-    });
+    const { marcarGrupoCancelado } = require('../utils/pedidoGrupo');
+    marcarGrupoCancelado(pedido, interaction.user.id, 'Cancelado pelo usuário');
 
     // Fechar o ticket se existir
     if (pedido.ticket_id) {
@@ -877,14 +865,10 @@ module.exports = async (interaction, client) => {
     }
   }
 
-  if (id === 'carrinho_comprar_tudo') {    await interaction.deferReply({ ephemeral: true });
-    const itens = listarCarrinho(interaction.user.id);
-    if (!itens.length) return interaction.editReply({ content: '🛒 Carrinho vazio.' });
-    const total = calcularTotal(itens);
-    // Comprar primeiro item do carrinho (pode expandir para múltiplos pedidos)
-    const primeiro = itens[0];
-    limparCarrinho(interaction.user.id);
-    return iniciarCompra(interaction, primeiro.produto_id);
+  if (id === 'carrinho_comprar_tudo') {
+    await interaction.deferReply({ ephemeral: true });
+    const { iniciarCompraCarrinho } = require('../systems/loja');
+    return iniciarCompraCarrinho(interaction, client);
   }
 
   // ── Tickets ──────────────────────────────────────────────────────────────────
