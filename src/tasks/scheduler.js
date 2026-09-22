@@ -220,20 +220,21 @@ module.exports = function iniciarScheduler(client) {
       `).all();
 
       const posEmoji = ['🥇', '🥈', '🥉'];
-      const linhas = top.map((u, i) => {
-        const pos = i < 3 ? posEmoji[i] : `\`${String(i + 1).padStart(2, ' ')}.\``;
+      const fields = top.map((u, i) => {
+        const pos = i < 3 ? posEmoji[i] : `\`${String(i + 1).padStart(2, ' ')}\``;
         const nomeUsuario = `<@${u.usuario_id}>`;
-        return `${pos} ${nomeUsuario}\n   **XX**`;
+        return {
+          name: `${pos} ${nomeUsuario}`,
+          value: '**XX**',
+          inline: false,
+        };
       });
 
       const embed = new EmbedBuilder()
-        .setColor(0xFFD700)
+        .setColor(0xF4C95D)
         .setTitle('🏆 TOP 10 MAIORES COMPRADORES')
-        .setDescription(
-          linhas.length
-            ? linhas.join('\n\n')
-            : '*Nenhum comprador registrado ainda.*'
-        )
+        .setDescription('> 🔒 Valores ocultados por ética e privacidade.')
+        .addFields(fields.length ? fields : [{ name: '📭 Nenhum comprador registrado', value: 'Aguardando a primeira compra.', inline: false }])
         .setFooter({ text: `Atualizado às ${new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` })
         .setTimestamp();
 
