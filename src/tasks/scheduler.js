@@ -173,96 +173,102 @@ module.exports = function iniciarScheduler(client) {
     }
   });
 
-  // ── KPI: Ranking de Coins — atualiza a cada 2s no canal fixo ────────────────
-  const CANAL_KPI_COINS = '1544885444578254919';
-  let kpiMsgId = null;
+  // ── KPI: Ranking de Compradores + contador de clientes satisfeitos ─────────
+  const CANAL_CLIENTES_SATISFEITOS = '1522518246694191284';
+  const CANAL_RANKING_COMPRADORES = '1544885444578254919';
+  let rankingCompradoresMsgId = null;
 
-  async function atualizarKpiCoins() {
+  async function atualizarClientesSatisfeitos() {
     try {
       const guild = client.guilds.cache.first();
       if (!guild) return;
-      const canal = guild.channels.cache.get(CANAL_KPI_COINS);
+
+      const total = Number(db.prepare(`
+        SELECT COUNT(DISTINCT usuario_id) as c
+        FROM pedidos
+        WHERE status IN ('pago', 'entregue')
+      `).get().c);
+
+      const canal = guild.channels.cache.get(CANAL_CLIENTES_SATISFEITOS);
       if (!canal) return;
 
-      const ownerIds = (() => {
-        const ids = [];
-        if (process.env.OWNER_DISCORD_ID) ids.push(process.env.OWNER_DISCORD_ID);
-        // Também excluir quem tem cargo owner
-        try {
-          const cargoOwner = guild.roles.cache.get(require('../config').roles?.owner);
-          if (cargoOwner) cargoOwner.members.forEach(m => ids.push(m.id));
-        } catch {}
-        return ids;
-      })();
+      const nome = `🏆 丨${total} CLIENTES SATISFEITOS`;
+      if (canal.name !== nome) {
+        await canal.setName(nome).catch(() => {});
+      }
+    } catch (err) {
+      console.error('[Scheduler clientes satisfeitos]', err.message);
+    }
+  }
+
+  async function atualizarRankingCompradores() {
+    try {
+      const guild = client.guilds.cache.first();
+      if (!guild) return;
+
+      const canal = guild.channels.cache.get(CANAL_RANKING_COMPRADORES);
+      if (!canal) return;
 
       const top = db.prepare(`
-        SELECT nome, discord_id, coins
-        FROM usuarios
-        WHERE coins > 0
-        ORDER BY coins DESC
-        LIMIT 25
-      `).all().filter(u => !ownerIds.includes(u.discord_id));
+        SELECT usuario_id, COUNT(*) as compras, SUM(valor_total) as gasto_total
+        FROM pedidos
+        WHERE status IN ('pago', 'entregue')
+        GROUP BY usuario_id
+        ORDER BY gasto_total DESC, compras DESC
+        LIMIT 10
+      `).all();
 
-      const totalCoins    = Number(db.prepare("SELECT COALESCE(SUM(coins),0) as t FROM usuarios").get().t);
-      const totalUsuarios = db.prepare("SELECT COUNT(*) as c FROM usuarios WHERE coins > 0").get().c;
-      const agora = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-
-      const posEmoji = ['🥇','🥈','🥉'];
+      const posEmoji = ['🥇', '🥈', '🥉'];
       const linhas = top.map((u, i) => {
-        const pos   = i < 3 ? posEmoji[i] : `\`${String(i + 1).padStart(2, ' ')}.\``;
-        const coins = Number(u.coins).toLocaleString('pt-BR');
-        const reais = `R$\u00a0${(Number(u.coins) * 0.01).toFixed(2)}`;
-        const barra = gerarBarra(Number(u.coins), Number(top[0].coins));
-        return `${pos} <@${u.discord_id}>\n   ${barra} **${coins}** 🪙 *(${reais})*`;
+        const pos = i < 3 ? posEmoji[i] : `\`${String(i + 1).padStart(2, ' ')}.\``;
+        const gasto = Number(u.gasto_total || 0);
+        const compras = Number(u.compras || 0);
+        const nomeUsuario = `<@${u.usuario_id}>`;
+        return `${pos} ${nomeUsuario}\n   **${compras} compras** • **XX**`;
       });
 
       const embed = new EmbedBuilder()
         .setColor(0xFFD700)
-        .setTitle('🏆 Ranking de Coins — Máximo Store')
+        .setTitle('🏆 Top 10 — Maiores Compradores')
         .setDescription(
           linhas.length
             ? linhas.join('\n\n')
-            : '*Nenhum usuário com coins ainda.*'
+            : '*Nenhum comprador registrado ainda.*'
         )
-        .addFields(
-          { name: '💰 Total em circulação', value: `**${totalCoins.toLocaleString('pt-BR')} coins**\n≈ R$ ${(totalCoins * 0.01).toFixed(2)}`, inline: true },
-          { name: '👥 Usuários com coins',  value: `**${totalUsuarios}**`,                                                                      inline: true },
-          { name: '🥇 Líder',              value: top.length ? `<@${top[0].discord_id}> — **${Number(top[0].coins).toLocaleString('pt-BR')}** 🪙` : '—', inline: true },
-        )
-        .setFooter({ text: `🔄 Atualizado às ${agora} • 100 coins = R$ 1,00` })
+        .setFooter({ text: `🔄 Atualizado às ${new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` })
         .setTimestamp();
 
-      if (kpiMsgId) {
-        const msg = await canal.messages.fetch(kpiMsgId).catch(() => null);
+      if (rankingCompradoresMsgId) {
+        const msg = await canal.messages.fetch(rankingCompradoresMsgId).catch(() => null);
         if (msg) {
-          await msg.edit({ embeds: [embed] }).catch(() => { kpiMsgId = null; });
+          await msg.edit({ embeds: [embed] }).catch(() => { rankingCompradoresMsgId = null; });
           return;
         }
       }
 
-      // Deletar msgs antigas do bot e criar nova
       const msgs = await canal.messages.fetch({ limit: 10 }).catch(() => null);
       if (msgs) {
         for (const [, m] of msgs.filter(m => m.author.id === guild.client.user.id)) {
           await m.delete().catch(() => {});
         }
       }
+
       const nova = await canal.send({ embeds: [embed] });
-      kpiMsgId = nova.id;
-    } catch {}
+      rankingCompradoresMsgId = nova.id;
+    } catch (err) {
+      console.error('[Scheduler ranking compradores]', err.message);
+    }
   }
 
-  function gerarBarra(valor, maximo, tamanho = 8) {
-    if (!maximo) return '░'.repeat(tamanho);
-    const preenchido = Math.round((valor / maximo) * tamanho);
-    return '█'.repeat(preenchido) + '░'.repeat(tamanho - preenchido);
-  }
-
-  // Primeira execução imediata, depois a cada 2s
+  // Primeira execução imediata, depois em loop
   setTimeout(async () => {
-    await atualizarKpiCoins();
-    setInterval(atualizarKpiCoins, 8000);
+    await atualizarClientesSatisfeitos();
+    await atualizarRankingCompradores();
+    setInterval(async () => {
+      await atualizarClientesSatisfeitos();
+      await atualizarRankingCompradores();
+    }, 8000);
   }, 5000);
 };
 
-  console.log('⏰ Scheduler iniciado com sucesso!');
+console.log('⏰ Scheduler iniciado com sucesso!');
