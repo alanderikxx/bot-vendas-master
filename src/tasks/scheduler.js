@@ -222,10 +222,12 @@ module.exports = function iniciarScheduler(client) {
       const posEmoji = ['🥇', '🥈', '🥉'];
       const fields = top.map((u, i) => {
         const pos = i < 3 ? posEmoji[i] : `\`${String(i + 1).padStart(2, ' ')}\``;
-        const nomeUsuario = `<@${u.usuario_id}>`;
+        const nomeUsuario = u.usuario_id ? `<@${u.usuario_id}>` : `Usuário ${i + 1}`;
+        const barras = ['▉', '▊', '▋', '▌', '▍', '▎', '▏'];
+        const textura = barras[i % barras.length].repeat(9);
         return {
           name: `${pos} ${nomeUsuario}`,
-          value: '**XX**',
+          value: `> ${textura}  **XX**`,
           inline: false,
         };
       });
@@ -233,7 +235,10 @@ module.exports = function iniciarScheduler(client) {
       const embed = new EmbedBuilder()
         .setColor(0xF4C95D)
         .setTitle('🏆 TOP 10 MAIORES COMPRADORES')
-        .setDescription('> 🔒 Valores ocultados por ética e privacidade.')
+        .setDescription([
+          '> 🔒 Valores ocultados por ética e privacidade.',
+          '> 👑 Ranking atualizado com os maiores compradores da loja.',
+        ].join('\n'))
         .addFields(fields.length ? fields : [{ name: '📭 Nenhum comprador registrado', value: 'Aguardando a primeira compra.', inline: false }])
         .setFooter({ text: `Atualizado às ${new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` })
         .setTimestamp();
