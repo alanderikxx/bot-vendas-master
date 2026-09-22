@@ -22,6 +22,16 @@ function formatarItensEntrega(itens) {
   }).join('\n');
 }
 
+async function atribuirCargoProduto(member, produto) {
+  if (!member || !produto?.cargo_id) return false;
+
+  const cargoId = String(produto.cargo_id).trim();
+  if (!cargoId || member.roles.cache.has(cargoId)) return false;
+
+  await member.roles.add(cargoId).catch(() => {});
+  return true;
+}
+
 // ─── Mostrar loja ─────────────────────────────────────────────────────────────
 async function mostrarLoja(interaction, pagina = 0) {
   if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
@@ -576,6 +586,10 @@ async function entregarProduto(pedido, client) {
         const { atualizarCargoCliente } = require('./cargosAutomaticos');
         await atualizarCargoCliente(member, novoGasto);
       }
+      if (produto?.cargo_id) {
+        const memberCargo = await guild.members.fetch(pedido.usuario_id).catch(() => null);
+        await atribuirCargoProduto(memberCargo, produto);
+      }
     } catch {}
 
     const member = await guild.members.fetch(pedido.usuario_id).catch(() => null);
@@ -755,6 +769,9 @@ async function liberarPedidoManual(interaction, pedidoId, client) {
   if (guildObj && entregues.length) {
     const member = await guildObj.members.fetch(pedido.usuario_id).catch(() => null);
     if (member) {
+      const cargoProduto = entregues.find(item => item.produto?.cargo_id)?.produto;
+      if (cargoProduto) await atribuirCargoProduto(member, cargoProduto);
+
       const { t, getIdioma, btnIdioma } = require('./i18n');
       const idioma = getIdioma(pedido.usuario_id);
       const itensEntrega = entregues.flatMap(item =>

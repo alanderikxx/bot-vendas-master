@@ -7,6 +7,11 @@ async function init() {
   // Inicializa o sql.js (wasm) e abre/cria o banco
   await initSqlJs(config.dbPath);
 
+  const produtosColumns = db.prepare('PRAGMA table_info(produtos)').all();
+  if (!produtosColumns.some(col => col.name === 'cargo_id')) {
+    db.exec('ALTER TABLE produtos ADD COLUMN cargo_id TEXT;');
+  }
+
   db.exec(`
     -- ─── Usuários ─────────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS usuarios (
@@ -39,6 +44,7 @@ async function init() {
       preco_promo   REAL,
       categoria     TEXT DEFAULT 'Geral',
       imagem_url    TEXT,
+      cargo_id      TEXT,
       estoque       INTEGER DEFAULT -1,
       tipo          TEXT DEFAULT 'digital',
       ativo         INTEGER DEFAULT 1,
@@ -568,10 +574,11 @@ const Produtos = {
     const { v4: uuidv4 } = require('uuid');
     const id = uuidv4();
     db.prepare(`
-      INSERT INTO produtos (id, nome, descricao, preco, preco_promo, categoria, imagem_url, estoque, tipo, criado_por)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO produtos (id, nome, descricao, preco, preco_promo, categoria, imagem_url, cargo_id, estoque, tipo, criado_por)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(id, dados.nome, dados.descricao, dados.preco, dados.precoPromo || null,
         dados.categoria || 'Geral', dados.imagemUrl || null,
+        dados.cargoId || null,
         dados.estoque !== undefined ? dados.estoque : -1,
         dados.tipo || 'digital', dados.criadoPor || null);
     return id;

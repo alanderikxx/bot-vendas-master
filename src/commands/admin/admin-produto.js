@@ -19,6 +19,7 @@ module.exports = {
          .addIntegerOption(o => o.setName('estoque').setDescription('Estoque (-1 = ilimitado)').setRequired(false).setMinValue(-1))
          .addStringOption(o => o.setName('tipo').setDescription('Tipo').addChoices({ name: 'Digital', value: 'digital' }, { name: 'Físico', value: 'fisico' }).setRequired(false))
          .addStringOption(o => o.setName('imagem').setDescription('URL da imagem').setRequired(false))
+         .addRoleOption(o => o.setName('cargo').setDescription('Cargo para quem comprar este produto').setRequired(false))
          .addBooleanOption(o => o.setName('destaque').setDescription('Produto em destaque?').setRequired(false))
     )
     .addSubcommand(sub =>
@@ -29,6 +30,7 @@ module.exports = {
            { name: 'Nome', value: 'nome' }, { name: 'Preço', value: 'preco' },
            { name: 'Preço Promo', value: 'preco_promo' }, { name: 'Descrição', value: 'descricao' },
            { name: 'Estoque', value: 'estoque' }, { name: 'Imagem', value: 'imagem_url' },
+           { name: 'Cargo do Produto', value: 'cargo_id' },
          ).setRequired(true))
          .addStringOption(o => o.setName('valor').setDescription('Novo valor').setRequired(true))
     )
@@ -67,6 +69,7 @@ module.exports = {
         estoque: interaction.options.getInteger('estoque') ?? -1,
         tipo: interaction.options.getString('tipo') || 'digital',
         imagemUrl: interaction.options.getString('imagem') || null,
+        cargoId: interaction.options.getRole('cargo')?.id || null,
         criadoPor: interaction.user.id,
       };
 
@@ -93,7 +96,9 @@ module.exports = {
       if (!produto) return interaction.editReply({ content: '❌ Produto não encontrado.' });
 
       const valorConv = ['preco', 'preco_promo', 'estoque'].includes(campo) ? parseFloat(valor) : valor;
-      Produtos.atualizar(id, { [campo]: valorConv });
+      const payload = { [campo]: valorConv };
+      if (campo === 'cargo_id') payload.cargo_id = valor;
+      Produtos.atualizar(id, payload);
 
       await interaction.editReply({ content: `✅ **${produto.nome}** atualizado! \`${campo}\` = \`${valor}\`` });
     }
