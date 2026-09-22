@@ -231,13 +231,13 @@ module.exports = function iniciarScheduler(client) {
           try { member = await guild.members.fetch(u.usuario_id); } catch {}
         }
 
-        const nomeUsuario = member ? member.toString() : `@${u.usuario_id || 'desconhecido'}`;
+        const nomeUsuario = member ? member.user.username : `Usuário ${i + 1}`;
         const barras = ['▉', '▊', '▋', '▌', '▍', '▎', '▏'];
         const textura = barras[i % barras.length].repeat(9);
 
         fields.push({
           name: `${pos} ${nomeUsuario}`,
-          value: `> ${textura}  **XX**`,
+          value: `> <@${u.usuario_id}> • ${textura}  **XX**`,
           inline: false,
         });
       }
