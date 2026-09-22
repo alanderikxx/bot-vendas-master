@@ -343,7 +343,11 @@ function montarComponentes(variantes, painelId) {
   const isCoins   = produto?.nome?.toLowerCase().includes('coin') || produto?.tipo === 'coins';
   const fs        = getFlashSale(produtoId);
 
-  const options = variantes.slice(0, 25).map(v => {
+  const options = variantes
+    .slice()
+    .sort((a, b) => Number(a.preco) - Number(b.preco))
+    .slice(0, 25)
+    .map(v => {
     const qtd        = isCoins ? null : (db.prepare('SELECT COUNT(*) as c FROM estoque_variante WHERE variante_id=? AND usado=0').get(v.id)?.c || 0);
     const temEstoque = isCoins || qtd > 0;
 
@@ -375,7 +379,7 @@ function montarComponentes(variantes, painelId) {
     }
 
     return { label, description: desc.slice(0, 100), value: v.id };
-  });
+    });
 
   return [{ type: 1, components: [{
     type: 3,

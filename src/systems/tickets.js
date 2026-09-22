@@ -146,26 +146,18 @@ async function abrirTicket(guild, member, tipo = 'compra', dadosExtra = {}) {
       });
     }
 
-    // Row 1 — Pagamento (cliente)
-    const rowPag = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`escolher_moeda_${dadosExtra.pedidoId}`).setLabel('💳 Escolher Pagamento').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`pagar_coins_${dadosExtra.pedidoId}`).setLabel(`🪙 Pagar com Coins`).setStyle(ButtonStyle.Secondary).setDisabled(!podeCoins),
+    // Menu principal do ticket: os detalhes ficam em respostas efêmeras.
+    const rowMenu = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`ticket_menu_pagamento_${dadosExtra.pedidoId}`).setLabel('💳 Pagamento').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`aplicar_cupom_${dadosExtra.pedidoId}`).setLabel('🎟️ Cupom').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`informar_vendedor_${dadosExtra.pedidoId}`).setLabel('🤝 Código do Vendedor').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`cancelar_pedido_${dadosExtra.pedidoId}`).setLabel('❌ Cancelar').setStyle(ButtonStyle.Danger),
-    );
-
-    // Row 2 — Staff (só cargo suporte+ consegue usar)
-    const rowStaff = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('ticket_assumir').setLabel('✋ Assumir').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`ticket_aceitar_sem_pag_${dadosExtra.pedidoId}`).setLabel('✅ Liberar').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('ticket_fechar').setLabel('🔒 Fechar').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`ticket_menu_usuario_${dadosExtra.pedidoId}`).setLabel('👤 Menu Usuário').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`ticket_menu_adm_${dadosExtra.pedidoId}`).setLabel('🛠️ Menu ADM').setStyle(ButtonStyle.Secondary),
     );
 
     await canal.send({
       content:    `<@&${config.roles.suporte}> <@${member.id}>`,
       embeds:     [embedCompra],
-      components: [rowPag, rowStaff],
+      components: [rowMenu],
     });
 
     await log('ticket_aberto', { usuario: member.id, ticketId: ticketId.slice(0,8).toUpperCase(), descricao: `Ticket compra aberto por ${member.user.tag}` });

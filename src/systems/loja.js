@@ -15,6 +15,13 @@ const {
   aplicarTxIdGrupo, marcarGrupoPago, ticketAindaTemItensAbertos,
 } = require('../utils/pedidoGrupo');
 
+function formatarItensEntrega(itens) {
+  return itens.map((item, index) => {
+    const linha = String(item).replace(/\r?\n/g, ' ').trim();
+    return `${index + 1}. \`${linha}\``;
+  }).join('\n');
+}
+
 // ─── Mostrar loja ─────────────────────────────────────────────────────────────
 async function mostrarLoja(interaction, pagina = 0) {
   if (!interaction.deferred && !interaction.replied) await interaction.deferReply({ ephemeral: true });
@@ -590,10 +597,16 @@ async function entregarProduto(pedido, client) {
       .setTimestamp()
       .setFooter({ text: t('delivery_footer', idioma) });
 
+    let arquivoEntrega = null;
     if (conteudo && conteudo !== '⚠️ Entrega manual — nossa equipe entrará em contato via ticket.') {
+      const listaEntrega = formatarItensEntrega(conteudo.split('\n').filter(Boolean));
+      arquivoEntrega = new AttachmentBuilder(Buffer.from(listaEntrega, 'utf8'), {
+        name: `entrega_${pedido.id.slice(0, 8)}.txt`,
+      });
+
       // Dividir em chunks de 900 chars para não ultrapassar o limite do Discord
       const chunks = [];
-      let resto = conteudo;
+      let resto = listaEntrega;
       while (resto.length > 0) {
         chunks.push(resto.slice(0, 900));
         resto = resto.slice(900);
@@ -631,6 +644,7 @@ async function entregarProduto(pedido, client) {
     if (embedSugestao) mensagens.push({ embeds: [embedSugestao] });
 
     // Sempre entrega no privado — nunca no ticket
+    if (arquivoEntrega) mensagens[0].files = [arquivoEntrega];
     const enviado = await member.send(mensagens[0]).catch(() => null);
     if (enviado && embedSugestao) await member.send(mensagens[1]).catch(() => {});
 
@@ -723,12 +737,15 @@ async function liberarPedidoManual(interaction, pedidoId, client) {
       }
 
       if (!conteudo) {
-        const item = db.prepare('SELECT * FROM estoque_digital WHERE produto_id=? AND usado=0 LIMIT 1').get(pedidoAtualizado.produto_id);
-        if (item) {
+        const itens = [];
+        for (let i = 0; i < qtd; i++) {
+          const item = db.prepare('SELECT * FROM estoque_digital WHERE produto_id=? AND usado=0 LIMIT 1').get(pedidoAtualizado.produto_id);
+          if (!item) break;
           db.prepare("UPDATE estoque_digital SET usado=1,usado_por=?,usado_em=strftime('%s','now'),pedido_id=? WHERE id=?")
             .run(pedidoAtualizado.usuario_id, pedidoAtual.id, item.id);
-          conteudo = item.conteudo;
+          itens.push(item.conteudo);
         }
+        conteudo = itens.length ? itens.join('\n') : null;
       }
 
       db.prepare('UPDATE pedidos SET conteudo_entregue=? WHERE id=?').run(conteudo || 'Entregue manualmente', pedidoAtual.id);
@@ -746,9 +763,15 @@ async function liberarPedidoManual(interaction, pedidoId, client) {
     if (member) {
       const { t, getIdioma, btnIdioma } = require('./i18n');
       const idioma = getIdioma(pedido.usuario_id);
-      const totalConteudo = entregues
-        .map((item, index) => `**${index + 1}. ${item.produto?.nome || 'Produto'}**\n${item.conteudo}`)
-        .join('\n\n');
+      const itensEntrega = entregues.flatMap(item =>
+        item.conteudo === 'Entregue manualmente'
+          ? []
+          : item.conteudo.split('\n').filter(Boolean),
+      );
+      const totalConteudo = formatarItensEntrega(itensEntrega);
+      const arquivoEntrega = itensEntrega.length
+        ? new AttachmentBuilder(Buffer.from(totalConteudo, 'utf8'), { name: `entrega_${pedidoId.slice(0, 8)}.txt` })
+        : null;
 
       const chunks = [];
       let resto = totalConteudo;
@@ -774,7 +797,9 @@ async function liberarPedidoManual(interaction, pedidoId, client) {
         new ButtonBuilder().setCustomId(`avaliar_${entregues[0].pedidoId}`).setLabel(t('delivery_rate', idioma)).setStyle(ButtonStyle.Secondary),
         btnIdioma(idioma),
       );
-      await member.send({ embeds: [embed], components: [row] }).catch(() => {});
+      const payload = { embeds: [embed], components: [row] };
+      if (arquivoEntrega) payload.files = [arquivoEntrega];
+      await member.send(payload).catch(() => {});
     }
   }
 

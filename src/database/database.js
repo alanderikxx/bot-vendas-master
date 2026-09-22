@@ -700,11 +700,13 @@ const Tickets = {
   },
 };
 
+const BOOLEAN_CONFIG_KEYS = new Set(['loja_aberta', 'manutencao']);
+
 const Config = {
   get: (chave) => {
     const r = db.prepare('SELECT valor, tipo FROM configuracoes WHERE chave = ?').get(chave);
     if (!r) return null;
-    if (r.tipo === 'boolean') return r.valor === '1';
+    if (r.tipo === 'boolean' || BOOLEAN_CONFIG_KEYS.has(chave)) return r.valor === '1' || r.valor === true;
     if (r.tipo === 'number') return parseFloat(r.valor);
     return r.valor;
   },

@@ -270,6 +270,58 @@ module.exports = async (interaction, client) => {
     return mostrarLoja(interaction, pagina);
   }
 
+  // ── Menus compactos do ticket ───────────────────────────────────────────────
+  if (id.startsWith('ticket_menu_pagamento_')) {
+    const pedidoId = id.replace('ticket_menu_pagamento_', '');
+    const pedido = Pedidos.get(pedidoId);
+    if (!pedido) return interaction.reply({ content: '❌ Pedido não encontrado.', ephemeral: true });
+    if (pedido.status !== 'pendente') return interaction.reply({ content: `⚠️ Pedido já: **${pedido.status}**`, ephemeral: true });
+    if (pedido.usuario_id !== interaction.user.id) return interaction.reply({ content: '❌ Este pedido não é seu.', ephemeral: true });
+
+    const coins = Usuarios.get(interaction.user.id)?.coins || 0;
+    const valor = Number(require('../utils/pedidoGrupo').totalGrupoPedidos(pedido));
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`escolher_moeda_${pedidoId}`).setLabel('💳 Escolher Pagamento').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`pagar_coins_${pedidoId}`).setLabel('🪙 Pagar com Coins').setStyle(ButtonStyle.Secondary).setDisabled(coins * 0.01 < valor),
+    );
+    return interaction.reply({
+      content: `💳 **Pagamento**\nValor: **R$ ${valor.toFixed(2)}**\nCoins disponíveis: **${coins.toLocaleString('pt-BR')}**`,
+      components: [row],
+      ephemeral: true,
+    });
+  }
+
+  if (id.startsWith('ticket_menu_usuario_')) {
+    const pedidoId = id.replace('ticket_menu_usuario_', '');
+    const pedido = Pedidos.get(pedidoId);
+    if (!pedido) return interaction.reply({ content: '❌ Pedido não encontrado.', ephemeral: true });
+    if (pedido.usuario_id !== interaction.user.id) return interaction.reply({ content: '❌ Este menu é exclusivo do dono do pedido.', ephemeral: true });
+    if (pedido.status !== 'pendente') return interaction.reply({ content: `⚠️ Pedido já: **${pedido.status}**`, ephemeral: true });
+
+    return interaction.reply({
+      content: '👤 **Menu Usuário**',
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`informar_vendedor_${pedidoId}`).setLabel('🤝 Código do Vendedor').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`cancelar_pedido_${pedidoId}`).setLabel('❌ Cancelar Pedido').setStyle(ButtonStyle.Danger),
+      )],
+      ephemeral: true,
+    });
+  }
+
+  if (id.startsWith('ticket_menu_adm_')) {
+    const pedidoId = id.replace('ticket_menu_adm_', '');
+    if (!podeVerTickets(interaction.member)) return interaction.reply({ content: '❌ Apenas a equipe pode acessar este menu.', ephemeral: true });
+    return interaction.reply({
+      content: '🛠️ **Menu ADM**',
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('ticket_assumir').setLabel('✋ Assumir').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`ticket_aceitar_sem_pag_${pedidoId}`).setLabel('✅ Liberar').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('ticket_fechar').setLabel('🔒 Fechar').setStyle(ButtonStyle.Danger),
+      )],
+      ephemeral: true,
+    });
+  }
+
   // ── Escolher moeda de pagamento (select menu) ────────────────────────────────
   if (id.startsWith('escolher_moeda_')) {
     const pedidoId = id.replace('escolher_moeda_', '');

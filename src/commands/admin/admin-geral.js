@@ -245,7 +245,7 @@ module.exports = {
     // ── LOJA ───────────────────────────────────────────────────────────────────
     if (sub === 'loja') {
       const aberta = interaction.options.getBoolean('aberta');
-      Config.set('loja_aberta', aberta ? '1' : '0');
+      Config.set('loja_aberta', aberta);
       await log('sistema', { executor: interaction.user.id, descricao: `Loja ${aberta ? 'aberta' : 'fechada'} por ${interaction.user.tag}` });
       return interaction.editReply({ content: `✅ Loja ${aberta ? '🟢 **aberta**' : '🔴 **fechada**'}.` });
     }

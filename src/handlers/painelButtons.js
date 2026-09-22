@@ -29,7 +29,7 @@ module.exports = async (interaction, client) => {
   if (id === 'painel_toggle_loja') {
     if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
     const atual = Config.get('loja_aberta');
-    Config.set('loja_aberta', atual ? '0' : '1');
+    Config.set('loja_aberta', !atual);
     await log('sistema', { executor: interaction.user.id, descricao: `Loja ${atual ? 'fechada' : 'aberta'} pelo painel` });
     await interaction.reply({ content: `✅ Loja ${atual ? '🔴 **fechada**' : '🟢 **aberta**'}.`, ephemeral: true });
     const { enviarPainel } = require('../commands/admin/painel');
@@ -40,7 +40,7 @@ module.exports = async (interaction, client) => {
   if (id === 'painel_toggle_manutencao') {
     if (!isAdmin(interaction.member)) return interaction.reply({ content: '❌ Apenas admins.', ephemeral: true });
     const atual = Config.get('manutencao');
-    Config.set('manutencao', atual ? '0' : '1');
+  Config.set('manutencao', !atual);
     await log('sistema', { executor: interaction.user.id, descricao: `Manutenção ${atual ? 'desativada' : 'ativada'} pelo painel` });
     await interaction.reply({ content: `✅ Manutenção ${atual ? '✅ desativada' : '🔧 **ativada**'}.`, ephemeral: true });
     const { enviarPainel } = require('../commands/admin/painel');
