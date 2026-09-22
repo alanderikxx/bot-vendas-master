@@ -192,7 +192,8 @@ module.exports = function iniciarScheduler(client) {
       const canal = guild.channels.cache.get(CANAL_CLIENTES_SATISFEITOS);
       if (!canal) return;
 
-      const nome = `🏆 丨${total} CLIENTES SATISFEITOS`;
+      const valorExibido = total >= 100 ? String(total) : 'XX';
+      const nome = `🏆 丨${valorExibido} CLIENTES SATISFEITOS`;
       if (canal.name !== nome) {
         await canal.setName(nome).catch(() => {});
       }
