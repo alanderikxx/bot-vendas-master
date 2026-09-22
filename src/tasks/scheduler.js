@@ -220,17 +220,27 @@ module.exports = function iniciarScheduler(client) {
       `).all();
 
       const posEmoji = ['🥇', '🥈', '🥉'];
-      const fields = top.map((u, i) => {
+      const fields = [];
+
+      for (let i = 0; i < top.length; i++) {
+        const u = top[i];
         const pos = i < 3 ? posEmoji[i] : `\`${String(i + 1).padStart(2, ' ')}\``;
-        const nomeUsuario = u.usuario_id ? `<@${u.usuario_id}>` : `Usuário ${i + 1}`;
+
+        let member = guild.members.cache.get(u.usuario_id);
+        if (!member) {
+          try { member = await guild.members.fetch(u.usuario_id); } catch {}
+        }
+
+        const nomeUsuario = member ? member.toString() : `@${u.usuario_id || 'desconhecido'}`;
         const barras = ['▉', '▊', '▋', '▌', '▍', '▎', '▏'];
         const textura = barras[i % barras.length].repeat(9);
-        return {
+
+        fields.push({
           name: `${pos} ${nomeUsuario}`,
           value: `> ${textura}  **XX**`,
           inline: false,
-        };
-      });
+        });
+      }
 
       const embed = new EmbedBuilder()
         .setColor(0xF4C95D)
