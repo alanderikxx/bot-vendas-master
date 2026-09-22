@@ -18,7 +18,7 @@ const {
 function formatarItensEntrega(itens) {
   return itens.map((item, index) => {
     const linha = String(item).replace(/\r?\n/g, ' ').trim();
-    return `${index + 1}. \`${linha}\``;
+    return `${index + 1}. ${linha}`;
   }).join('\n');
 }
 
@@ -598,26 +598,12 @@ async function entregarProduto(pedido, client) {
       .setFooter({ text: t('delivery_footer', idioma) });
 
     let arquivoEntrega = null;
+    let botaoDownload = null;
     if (conteudo && conteudo !== '⚠️ Entrega manual — nossa equipe entrará em contato via ticket.') {
       const listaEntrega = formatarItensEntrega(conteudo.split('\n').filter(Boolean));
       arquivoEntrega = new AttachmentBuilder(Buffer.from(listaEntrega, 'utf8'), {
         name: `entrega_${pedido.id.slice(0, 8)}.txt`,
       });
-
-      // Dividir em chunks de 900 chars para não ultrapassar o limite do Discord
-      const chunks = [];
-      let resto = listaEntrega;
-      while (resto.length > 0) {
-        chunks.push(resto.slice(0, 900));
-        resto = resto.slice(900);
-      }
-      for (let i = 0; i < chunks.length; i++) {
-        embed.addFields({
-          name:  i === 0 ? t('delivery_your_product', idioma) : `📦 Continuação (${i + 1})`,
-          value: `\`\`\`\n${chunks[i]}\n\`\`\``,
-          inline: false,
-        });
-      }
     } else if (conteudo) {
       embed.addFields({
         name:  '⚠️ Entrega',
@@ -632,6 +618,16 @@ async function entregarProduto(pedido, client) {
       btnIdioma(idioma),
     );
 
+    if (arquivoEntrega) {
+      const uploadTemp = await member.send({ files: [arquivoEntrega] }).catch(() => null);
+      const urlArquivo = uploadTemp?.attachments?.first()?.url;
+      if (urlArquivo) {
+        botaoDownload = new ButtonBuilder().setLabel('📄 Baixar .txt').setStyle(ButtonStyle.Link).setURL(urlArquivo);
+        row.addComponents(botaoDownload);
+      }
+      if (uploadTemp) await uploadTemp.delete().catch(() => {});
+    }
+
     // Buscar transcript do ticket se existir
     const { criarBotaoTranscript, montarEmbedSugestao } = require('../utils/dmHelpers');
     const transcriptBtn = criarBotaoTranscript(null); // sem transcript na entrega ainda
@@ -643,8 +639,6 @@ async function entregarProduto(pedido, client) {
     const mensagens = [{ embeds: [embed], components: [row] }];
     if (embedSugestao) mensagens.push({ embeds: [embedSugestao] });
 
-    // Sempre entrega no privado — nunca no ticket
-    if (arquivoEntrega) mensagens[0].files = [arquivoEntrega];
     const enviado = await member.send(mensagens[0]).catch(() => null);
     if (enviado && embedSugestao) await member.send(mensagens[1]).catch(() => {});
 
@@ -773,10 +767,6 @@ async function liberarPedidoManual(interaction, pedidoId, client) {
         ? new AttachmentBuilder(Buffer.from(totalConteudo, 'utf8'), { name: `entrega_${pedidoId.slice(0, 8)}.txt` })
         : null;
 
-      const chunks = [];
-      let resto = totalConteudo;
-      while (resto.length > 0) { chunks.push(resto.slice(0, 900)); resto = resto.slice(900); }
-
       const embed = new EmbedBuilder()
         .setColor(config.colors.success)
         .setTitle(t('delivery_title', idioma))
@@ -788,18 +778,22 @@ async function liberarPedidoManual(interaction, pedidoId, client) {
         .setTimestamp()
         .setFooter({ text: t('delivery_footer', idioma) });
 
-      for (let i = 0; i < chunks.length; i++) {
-        embed.addFields({ name: i === 0 ? t('delivery_your_product', idioma) : `📦 Cont. (${i+1})`, value: `\`\`\`\n${chunks[i]}\n\`\`\``, inline: false });
-      }
-
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`confirmar_entrega_${entregues[0].pedidoId}`).setLabel(t('delivery_confirm', idioma)).setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId(`avaliar_${entregues[0].pedidoId}`).setLabel(t('delivery_rate', idioma)).setStyle(ButtonStyle.Secondary),
         btnIdioma(idioma),
       );
-      const payload = { embeds: [embed], components: [row] };
-      if (arquivoEntrega) payload.files = [arquivoEntrega];
-      await member.send(payload).catch(() => {});
+
+      if (arquivoEntrega) {
+        const uploadTemp = await member.send({ files: [arquivoEntrega] }).catch(() => null);
+        const urlArquivo = uploadTemp?.attachments?.first()?.url;
+        if (urlArquivo) {
+          row.addComponents(new ButtonBuilder().setLabel('📄 Baixar .txt').setStyle(ButtonStyle.Link).setURL(urlArquivo));
+        }
+        if (uploadTemp) await uploadTemp.delete().catch(() => {});
+      }
+
+      await member.send({ embeds: [embed], components: [row] }).catch(() => {});
     }
   }
 
