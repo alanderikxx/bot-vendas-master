@@ -355,10 +355,11 @@ function buildConfigMenu() {
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    btn('pa_cfg_canal_cupons', '🎟️ Canal Cupons',   ButtonStyle.Secondary),
-    btn('pa_apagar_venda',     '🗑️ Apagar Venda',    ButtonStyle.Danger),
-    btn('pa_zerar_historico',  '🗑️ Zerar Histórico', ButtonStyle.Danger),
-    btn('pa_home',             '🔙 Voltar',          ButtonStyle.Secondary),
+    btn('pa_cfg_canal_cupons',    '🎟️ Canal Cupons',      ButtonStyle.Secondary),
+    btn('pa_apagar_vendas_horas', '🕒 Apagar últimas Xh', ButtonStyle.Danger),
+    btn('pa_apagar_venda',        '🗑️ Apagar Venda',       ButtonStyle.Danger),
+    btn('pa_zerar_historico',     '🗑️ Zerar Histórico',    ButtonStyle.Danger),
+    btn('pa_home',                '🔙 Voltar',             ButtonStyle.Secondary),
   );
 
   return { embed, components: [row1, row2] };
@@ -811,6 +812,15 @@ async function handlePainelAdmin(interaction, client) {
   }
 
   // ── Apagar venda específica ──────────────────────────────────────────────
+  if (id === 'pa_apagar_vendas_horas') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_apagar_vendas_horas').setTitle('🕒 Apagar vendas recentes');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('horas').setLabel('Quantas horas atrás? (ex: 3)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: 3').setMinLength(1).setMaxLength(3)),
+    );
+    return interaction.showModal(modal);
+  }
+
   if (id === 'pa_apagar_venda') {
     if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
     const modal = new ModalBuilder().setCustomId('pam_apagar_venda').setTitle('🗑️ Apagar Venda Específica');
@@ -2710,6 +2720,42 @@ async function handlePainelAdminModals(interaction, client) {
     if (!canal) return interaction.editReply({ content: `❌ Canal \`${canalId}\` não encontrado.` });
     db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('canal_cupons_id',?,'string')").run(canalId);
     return interaction.editReply({ content: `✅ Canal de cupons configurado para <#${canalId}>.` });
+  }
+
+  if (id === 'pam_apagar_vendas_horas') {
+    await interaction.deferReply({ ephemeral: true });
+    const horas = parseInt(interaction.fields.getTextInputValue('horas').trim(), 10);
+    if (!Number.isFinite(horas) || horas <= 0 || horas > 720) {
+      return interaction.editReply({ content: '❌ Informe um número válido de horas (ex: 3). Máximo 720h.' });
+    }
+
+    const cutoff = Math.floor(Date.now() / 1000) - (horas * 3600);
+    const pedidos = db.prepare(`
+      SELECT * FROM pedidos
+      WHERE status IN ('pago','entregue')
+        AND (criado_em >= ? OR pago_em >= ? OR entregue_em >= ?)
+        AND (instr(COALESCE(nota_fiscal,''), 'manual') > 0 OR instr(COALESCE(nota_fiscal,''), 'autorizadoPor') > 0)
+      ORDER BY criado_em DESC
+    `).all(cutoff, cutoff, cutoff);
+
+    if (!pedidos.length) {
+      return interaction.editReply({ content: `✅ Nenhuma venda liberada manualmente nas últimas **${horas}h**.` });
+    }
+
+    const ids = pedidos.map(p => p.id);
+    const placeholders = ids.map(() => '?').join(',');
+
+    db.prepare(`DELETE FROM avaliacoes WHERE pedido_id IN (${placeholders})`).run(...ids);
+    db.prepare(`DELETE FROM cupons_usos WHERE pedido_id IN (${placeholders})`).run(...ids);
+    db.prepare(`DELETE FROM reembolsos WHERE pedido_id IN (${placeholders})`).run(...ids);
+    db.prepare(`DELETE FROM tickets WHERE pedido_id IN (${placeholders})`).run(...ids);
+    db.prepare(`DELETE FROM pedidos WHERE id IN (${placeholders})`).run(...ids);
+
+    await log('sistema', { executor: interaction.user.id, descricao: `🗑️ ${ids.length} vendas liberadas manualmente apagadas das últimas ${horas}h.` });
+
+    return interaction.editReply({
+      content: `✅ **${ids.length}** venda(s) liberada(s) manualmente nas últimas **${horas}h** foram removidas do histórico.`,
+    });
   }
 
   if (id === 'pam_apagar_venda') {
