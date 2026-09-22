@@ -356,6 +356,7 @@ function buildConfigMenu() {
 
   const row2 = new ActionRowBuilder().addComponents(
     btn('pa_cfg_canal_cupons', '🎟️ Canal Cupons',   ButtonStyle.Secondary),
+    btn('pa_apagar_venda',     '🗑️ Apagar Venda',    ButtonStyle.Danger),
     btn('pa_zerar_historico',  '🗑️ Zerar Histórico', ButtonStyle.Danger),
     btn('pa_home',             '🔙 Voltar',          ButtonStyle.Secondary),
   );
@@ -807,6 +808,40 @@ async function handlePainelAdmin(interaction, client) {
       mRow(new TextInputBuilder().setCustomId('dias').setLabel('Últimos X dias (vazio = todos)').setStyle(TextInputStyle.Short).setRequired(false).setPlaceholder('Ex: 7')),
     );
     return interaction.showModal(modal);
+  }
+
+  // ── Apagar venda específica ──────────────────────────────────────────────
+  if (id === 'pa_apagar_venda') {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const modal = new ModalBuilder().setCustomId('pam_apagar_venda').setTitle('🗑️ Apagar Venda Específica');
+    modal.addComponents(
+      mRow(new TextInputBuilder().setCustomId('pedido_id').setLabel('ID da venda (ou primeiros 8 chars)').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Ex: A1B2C3D4')),
+    );
+    return interaction.showModal(modal);
+  }
+
+  if (id.startsWith('pa_confirmar_apagar_venda_')) {
+    if (!isOwner(interaction.member)) return interaction.reply({ content: '❌ Apenas o Owner.', ephemeral: true });
+    const pedidoId = id.replace('pa_confirmar_apagar_venda_', '');
+    const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ? OR UPPER(SUBSTR(id,1,8)) = UPPER(?)').get(pedidoId, pedidoId);
+    if (!pedido) return interaction.update({ content: '❌ Venda não encontrada.', embeds: [], components: [] });
+
+    try {
+      const { log } = require('../utils/logger');
+      db.prepare('DELETE FROM avaliacoes WHERE pedido_id = ?').run(pedido.id);
+      db.prepare('DELETE FROM cupons_usos WHERE pedido_id = ?').run(pedido.id);
+      db.prepare('DELETE FROM reembolsos WHERE pedido_id = ?').run(pedido.id);
+      db.prepare('DELETE FROM tickets WHERE pedido_id = ?').run(pedido.id);
+      db.prepare('DELETE FROM pedidos WHERE id = ?').run(pedido.id);
+      await log('sistema', { executor: interaction.user.id, descricao: `Venda removida do histórico: ${pedido.id.slice(0,8).toUpperCase()} por ${interaction.user.tag}` });
+      return interaction.update({ content: `✅ Venda \`${pedido.id.slice(0,8).toUpperCase()}\` removida do histórico.`, embeds: [], components: [] });
+    } catch (err) {
+      return interaction.update({ content: `❌ Erro ao apagar venda: \`${err.message}\``, embeds: [], components: [] });
+    }
+  }
+
+  if (id === 'pa_cancelar_apagar_venda') {
+    return interaction.update({ content: '✅ Cancelado.', embeds: [], components: [] });
   }
 
   // ── Zerar histórico ───────────────────────────────────────────────────────
@@ -2675,6 +2710,31 @@ async function handlePainelAdminModals(interaction, client) {
     if (!canal) return interaction.editReply({ content: `❌ Canal \`${canalId}\` não encontrado.` });
     db.prepare("INSERT OR REPLACE INTO configuracoes (chave,valor,tipo) VALUES ('canal_cupons_id',?,'string')").run(canalId);
     return interaction.editReply({ content: `✅ Canal de cupons configurado para <#${canalId}>.` });
+  }
+
+  if (id === 'pam_apagar_venda') {
+    await interaction.deferReply({ ephemeral: true });
+    const busca = interaction.fields.getTextInputValue('pedido_id').trim();
+    const pedido = db.prepare("SELECT * FROM pedidos WHERE UPPER(SUBSTR(id,1,8))=UPPER(?) OR id LIKE ?").get(busca, `${busca}%`);
+    if (!pedido) return interaction.editReply({ content: `❌ Venda \`${busca}\` não encontrada.` });
+
+    const rowConf = new ActionRowBuilder().addComponents(
+      btn(`pa_confirmar_apagar_venda_${pedido.id}`, '✅ Confirmar exclusão', ButtonStyle.Danger),
+      btn('pa_cancelar_apagar_venda', '❌ Cancelar', ButtonStyle.Secondary),
+    );
+
+    return interaction.editReply({
+      embeds: [new EmbedBuilder()
+        .setColor(config.colors.error)
+        .setTitle('⚠️ Confirmar exclusão da venda')
+        .setDescription([
+          `Venda: \`${pedido.id.slice(0,8).toUpperCase()}\``,
+          `Cliente: <@${pedido.usuario_id}>`,
+          `Produto: ${pedido.produto_id || '—'}`,
+          `Valor: R$ ${Number(pedido.valor_total || 0).toFixed(2)}`,
+        ].join('\n'))],
+      components: [rowConf],
+    });
   }
 
   // ─── Afiliados modais ─────────────────────────────────────────────────────
