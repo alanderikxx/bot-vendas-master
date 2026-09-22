@@ -817,12 +817,15 @@ async function liberarPedidoManual(interaction, pedidoId, client) {
 
       const payloadBase = arquivoEntrega ? { embeds: [embed], files: [arquivoEntrega] } : { embeds: [embed] };
       const enviado = await member.send(payloadBase).catch(() => null);
-      if (enviado && urlArquivo = enviado.attachments?.first()?.url) {
-        const rowDownload = new ActionRowBuilder().addComponents(
-          ...row.components,
-          new ButtonBuilder().setLabel('📄 Baixar .txt').setStyle(ButtonStyle.Link).setURL(urlArquivo),
-        );
-        await enviado.edit({ components: [rowDownload] }).catch(() => {});
+      if (enviado) {
+        const urlArquivo = enviado.attachments?.first()?.url;
+        if (urlArquivo) {
+          const rowDownload = new ActionRowBuilder().addComponents(
+            ...row.components,
+            new ButtonBuilder().setLabel('📄 Baixar .txt').setStyle(ButtonStyle.Link).setURL(urlArquivo),
+          );
+          await enviado.edit({ components: [rowDownload] }).catch(() => {});
+        }
       }
     }
   }
