@@ -612,15 +612,20 @@ async function entregarProduto(pedido, client) {
       .setFooter({ text: t('delivery_footer', idioma) });
 
     let arquivoEntrega = null;
-    let botaoDownload = null;
+    let listaEntrega = '';
     if (conteudo && conteudo !== '⚠️ Entrega manual — nossa equipe entrará em contato via ticket.') {
-      const listaEntrega = formatarItensEntrega(conteudo.split('\n').filter(Boolean));
+      listaEntrega = formatarItensEntrega(conteudo.split('\n').filter(Boolean));
       arquivoEntrega = new AttachmentBuilder(Buffer.from(listaEntrega, 'utf8'), {
         name: `entrega_${pedido.id.slice(0, 8)}.txt`,
       });
+      embed.addFields({
+        name: '📦 Seu produto',
+        value: listaEntrega.length > 1024 ? `${listaEntrega.slice(0, 1000)}...` : listaEntrega,
+        inline: false,
+      });
     } else if (conteudo) {
       embed.addFields({
-        name:  '⚠️ Entrega',
+        name: '⚠️ Entrega',
         value: t('delivery_manual', idioma),
         inline: false,
       });
@@ -631,16 +636,6 @@ async function entregarProduto(pedido, client) {
       new ButtonBuilder().setCustomId(`avaliar_${pedido.id}`).setLabel(t('delivery_rate', idioma)).setStyle(ButtonStyle.Secondary),
       btnIdioma(idioma),
     );
-
-    if (arquivoEntrega) {
-      const uploadTemp = await member.send({ files: [arquivoEntrega] }).catch(() => null);
-      const urlArquivo = uploadTemp?.attachments?.first()?.url;
-      if (urlArquivo) {
-        botaoDownload = new ButtonBuilder().setLabel('📄 Baixar .txt').setStyle(ButtonStyle.Link).setURL(urlArquivo);
-        row.addComponents(botaoDownload);
-      }
-      if (uploadTemp) await uploadTemp.delete().catch(() => {});
-    }
 
     // Buscar transcript do ticket se existir
     const { criarBotaoTranscript, montarEmbedSugestao } = require('../utils/dmHelpers');
@@ -653,7 +648,18 @@ async function entregarProduto(pedido, client) {
     const mensagens = [{ embeds: [embed], components: [row] }];
     if (embedSugestao) mensagens.push({ embeds: [embedSugestao] });
 
-    const enviado = await member.send(mensagens[0]).catch(() => null);
+    const payloadBase = arquivoEntrega ? { embeds: [embed], files: [arquivoEntrega] } : { embeds: [embed] };
+    const enviado = await member.send(payloadBase).catch(() => null);
+    if (enviado) {
+      const urlArquivo = enviado.attachments?.first()?.url;
+      if (urlArquivo) {
+        const rowDownload = new ActionRowBuilder().addComponents(
+          ...row.components,
+          new ButtonBuilder().setLabel('📄 Baixar .txt').setStyle(ButtonStyle.Link).setURL(urlArquivo),
+        );
+        await enviado.edit({ components: [rowDownload] }).catch(() => {});
+      }
+    }
     if (enviado && embedSugestao) await member.send(mensagens[1]).catch(() => {});
 
     // Se não conseguiu enviar DM, avisa no ticket que o produto está pronto
@@ -795,22 +801,29 @@ async function liberarPedidoManual(interaction, pedidoId, client) {
         .setTimestamp()
         .setFooter({ text: t('delivery_footer', idioma) });
 
+      if (totalConteudo) {
+        embed.addFields({
+          name: '📦 Seu produto',
+          value: totalConteudo.length > 1024 ? `${totalConteudo.slice(0, 1000)}...` : totalConteudo,
+          inline: false,
+        });
+      }
+
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`confirmar_entrega_${entregues[0].pedidoId}`).setLabel(t('delivery_confirm', idioma)).setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId(`avaliar_${entregues[0].pedidoId}`).setLabel(t('delivery_rate', idioma)).setStyle(ButtonStyle.Secondary),
         btnIdioma(idioma),
       );
 
-      if (arquivoEntrega) {
-        const uploadTemp = await member.send({ files: [arquivoEntrega] }).catch(() => null);
-        const urlArquivo = uploadTemp?.attachments?.first()?.url;
-        if (urlArquivo) {
-          row.addComponents(new ButtonBuilder().setLabel('📄 Baixar .txt').setStyle(ButtonStyle.Link).setURL(urlArquivo));
-        }
-        if (uploadTemp) await uploadTemp.delete().catch(() => {});
+      const payloadBase = arquivoEntrega ? { embeds: [embed], files: [arquivoEntrega] } : { embeds: [embed] };
+      const enviado = await member.send(payloadBase).catch(() => null);
+      if (enviado && urlArquivo = enviado.attachments?.first()?.url) {
+        const rowDownload = new ActionRowBuilder().addComponents(
+          ...row.components,
+          new ButtonBuilder().setLabel('📄 Baixar .txt').setStyle(ButtonStyle.Link).setURL(urlArquivo),
+        );
+        await enviado.edit({ components: [rowDownload] }).catch(() => {});
       }
-
-      await member.send({ embeds: [embed], components: [row] }).catch(() => {});
     }
   }
 

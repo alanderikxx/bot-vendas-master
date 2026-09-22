@@ -63,6 +63,7 @@ module.exports = {
            { name: 'Pontos por Real', value: 'pontos_por_real' },
            { name: 'Cooldown Caixa (h)', value: 'caixa_cooldown' },
            { name: 'Min Saque Afiliado', value: 'min_saque_afiliado' },
+           { name: 'Apagar venda do histórico', value: 'apagar_venda_historico' },
          ).setRequired(true))
          .addStringOption(o => o.setName('valor').setDescription('Novo valor').setRequired(true))
     )
@@ -204,6 +205,26 @@ module.exports = {
     if (sub === 'config') {
       const chave = interaction.options.getString('chave');
       const valor = interaction.options.getString('valor');
+
+      if (chave === 'apagar_venda_historico') {
+        const busca = valor.trim();
+        const pedido = db.prepare("SELECT * FROM pedidos WHERE UPPER(SUBSTR(id,1,8))=UPPER(?) OR id LIKE ?").get(busca, `${busca}%`);
+        if (!pedido) return interaction.editReply({ content: `❌ Venda \`${busca}\` não encontrada no histórico.` });
+
+        db.prepare('DELETE FROM avaliacoes WHERE pedido_id = ?').run(pedido.id);
+        db.prepare('DELETE FROM cupons_usos WHERE pedido_id = ?').run(pedido.id);
+        db.prepare('DELETE FROM reembolsos WHERE pedido_id = ?').run(pedido.id);
+        db.prepare('DELETE FROM tickets WHERE pedido_id = ?').run(pedido.id);
+        db.prepare('DELETE FROM pedidos WHERE id = ?').run(pedido.id);
+
+        await log('sistema', {
+          executor: interaction.user.id,
+          descricao: `Venda removida do histórico: ${pedido.id.slice(0,8).toUpperCase()} por ${interaction.user.tag}`,
+        });
+
+        return interaction.editReply({ content: `✅ Venda \`${pedido.id.slice(0,8).toUpperCase()}\` removida do histórico.` });
+      }
+
       Config.set(chave, valor);
       await log('sistema', { executor: interaction.user.id, descricao: `Config alterada: ${chave} = ${valor}` });
       return interaction.editReply({ content: `✅ Config **\`${chave}\`** = \`${valor}\`` });
