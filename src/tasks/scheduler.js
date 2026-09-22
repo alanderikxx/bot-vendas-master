@@ -221,21 +221,19 @@ module.exports = function iniciarScheduler(client) {
       const posEmoji = ['🥇', '🥈', '🥉'];
       const linhas = top.map((u, i) => {
         const pos = i < 3 ? posEmoji[i] : `\`${String(i + 1).padStart(2, ' ')}.\``;
-        const gasto = Number(u.gasto_total || 0);
-        const compras = Number(u.compras || 0);
         const nomeUsuario = `<@${u.usuario_id}>`;
-        return `${pos} ${nomeUsuario}\n   **${compras} compras** • **XX**`;
+        return `${pos} ${nomeUsuario}\n   **XX**`;
       });
 
       const embed = new EmbedBuilder()
         .setColor(0xFFD700)
-        .setTitle('🏆 Top 10 — Maiores Compradores')
+        .setTitle('🏆 TOP 10 MAIORES COMPRADORES')
         .setDescription(
           linhas.length
             ? linhas.join('\n\n')
             : '*Nenhum comprador registrado ainda.*'
         )
-        .setFooter({ text: `🔄 Atualizado às ${new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` })
+        .setFooter({ text: `Atualizado às ${new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` })
         .setTimestamp();
 
       if (rankingCompradoresMsgId) {
