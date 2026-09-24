@@ -21,6 +21,36 @@ function formatarMetodo(metodo) {
   return `💳 ${metodo.toUpperCase()}`;
 }
 
+function resumirItensPedido(db, pedido) {
+  const ticketId = pedido.ticket_id || pedido.id;
+  const itens = db.prepare(`
+    SELECT p.*, pr.nome AS produto_nome
+    FROM pedidos p
+    JOIN produtos pr ON pr.id = p.produto_id
+    WHERE p.ticket_id = ?
+    ORDER BY p.criado_em ASC
+  `).all(ticketId);
+
+  const lista = itens.length > 0 ? itens : [pedido];
+  const agregados = new Map();
+
+  for (const item of lista) {
+    const nome = item.produto_nome || item.nome || 'Produto';
+    const quantidade = Number(item.quantidade || 1);
+    agregados.set(nome, (agregados.get(nome) || 0) + quantidade);
+  }
+
+  const resumo = [...agregados.entries()].map(([nome, qtd]) => `${qtd} ${nome}`).join(' / ');
+  const total = lista.reduce((acc, item) => acc + Number(item.valor_total || 0), 0);
+
+  return { resumo: resumo || extrasResumoPedido(pedido), total };
+}
+
+function extrasResumoPedido(pedido) {
+  const nome = pedido.produto_nome || pedido.nome || 'Produto';
+  return `${Number(pedido.quantidade || 1)} ${nome}`;
+}
+
 // Enviar log de venda no canal
 async function logVenda(client, pedido, extras = {}) {
   try {
@@ -36,6 +66,13 @@ async function logVenda(client, pedido, extras = {}) {
     const usuario  = db.prepare('SELECT * FROM usuarios WHERE discord_id=?').get(pedido.usuario_id);
     const afiliado = pedido.afiliado_id ? db.prepare('SELECT * FROM usuarios WHERE discord_id=?').get(pedido.afiliado_id) : null;
 
+    const resumoPedido = pedido.ticket_id
+      ? resumirItensPedido(db, pedido)
+      : { resumo: extras.nomeProduto || produto?.nome || pedido.produto_id.slice(0,8), total: Number(pedido.valor_total || 0) };
+
+    const nomeProduto = extras.nomeProduto || resumoPedido.resumo || produto?.nome || pedido.produto_id.slice(0,8);
+    const valorTotal = Number(resumoPedido.total || pedido.valor_total || 0);
+
     // Determinar quem vendeu
     let vendidoPor = '🤖 Bot (automático)';
     if (extras.atendente) vendidoPor = `👤 <@${extras.atendente}> (staff)`;
@@ -45,23 +82,21 @@ async function logVenda(client, pedido, extras = {}) {
     const metodo = pedido.metodo_pag || '';
     const pagoCoins = metodo.includes('coins');
     const pct = parseInt(db.prepare("SELECT valor FROM configuracoes WHERE chave='cashback_pct'").get()?.valor || '5');
-    const cashback = (!pagoCoins && !pedido.cupom_usado && pedido.valor_total >= 1)
-      ? Math.floor(pedido.valor_total * pct)
+    const cashback = (!pagoCoins && !pedido.cupom_usado && valorTotal >= 1)
+      ? Math.floor(valorTotal * pct)
       : 0;
 
     // Data e hora
     const ts = pedido.pago_em || pedido.entregue_em || Math.floor(Date.now()/1000);
     const data = new Date(ts * 1000).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
 
-    const nomeProduto = extras.nomeProduto || produto?.nome || pedido.produto_id.slice(0,8);
-
     const embed = new EmbedBuilder()
       .setColor(pagoCoins ? 0xFFD700 : 0x00D26A)
       .setTitle('🛒 Nova Venda Realizada')
       .addFields(
         { name: '👤 Comprador',       value: `<@${pedido.usuario_id}> (${usuario?.nome || pedido.usuario_id})`, inline: false },
-        { name: '📦 Produto',         value: `**${nomeProduto}**`,                                              inline: true  },
-        { name: '💵 Valor',           value: `**R$ ${Number(pedido.valor_total).toFixed(2)}**`,                 inline: true  },
+        { name: '📦 Produtos',        value: `**${nomeProduto}**`,                                              inline: true  },
+        { name: '💵 Valor',           value: `**R$ ${valorTotal.toFixed(2)}**`,                                  inline: true  },
         { name: '💳 Pagamento',       value: formatarMetodo(metodo),                                            inline: true  },
         { name: '🆔 Pedido',          value: `\`${pedido.id.slice(0,8).toUpperCase()}\``,                       inline: true  },
         { name: '📅 Data/Hora',       value: data,                                                              inline: true  },

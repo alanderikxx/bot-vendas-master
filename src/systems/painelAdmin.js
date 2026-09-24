@@ -9,8 +9,17 @@ const {
 } = require('discord.js');
 const { db, Config, Produtos, Usuarios } = require('../database/database');
 const { isAdmin, isStaff, isLoja, isOwner } = require('../utils/permissions');
+const { log } = require('../utils/logger');
 const config  = require('../config');
 const moment  = require('moment-timezone');
+
+async function safeLog(tipo, dados = {}) {
+  try {
+    await log(tipo, dados);
+  } catch (err) {
+    console.error('[safeLog]', err.message);
+  }
+}
 
 const CANAL_PAINEL = '1533638769901703178';
 const CANAL_PAINEL_PUBLICO_2FA = process.env.PAINEL_PUBLICO_2FA_CHANNEL_ID || process.env.PAINEL_2FA_CHANNEL_ID || CANAL_PAINEL;
@@ -843,7 +852,7 @@ async function handlePainelAdmin(interaction, client) {
       db.prepare('DELETE FROM reembolsos WHERE pedido_id = ?').run(pedido.id);
       db.prepare('DELETE FROM tickets WHERE pedido_id = ?').run(pedido.id);
       db.prepare('DELETE FROM pedidos WHERE id = ?').run(pedido.id);
-      await log('sistema', { executor: interaction.user.id, descricao: `Venda removida do histórico: ${pedido.id.slice(0,8).toUpperCase()} por ${interaction.user.tag}` });
+      await safeLog('sistema', { executor: interaction.user.id, descricao: `Venda removida do histórico: ${pedido.id.slice(0,8).toUpperCase()} por ${interaction.user.tag}` });
       return interaction.update({ content: `✅ Venda \`${pedido.id.slice(0,8).toUpperCase()}\` removida do histórico.`, embeds: [], components: [] });
     } catch (err) {
       return interaction.update({ content: `❌ Erro ao apagar venda: \`${err.message}\``, embeds: [], components: [] });
@@ -2751,7 +2760,7 @@ async function handlePainelAdminModals(interaction, client) {
     db.prepare(`DELETE FROM tickets WHERE pedido_id IN (${placeholders})`).run(...ids);
     db.prepare(`DELETE FROM pedidos WHERE id IN (${placeholders})`).run(...ids);
 
-    await log('sistema', { executor: interaction.user.id, descricao: `🗑️ ${ids.length} vendas liberadas manualmente apagadas das últimas ${horas}h.` });
+    await safeLog('sistema', { executor: interaction.user.id, descricao: `🗑️ ${ids.length} vendas liberadas manualmente apagadas das últimas ${horas}h.` });
 
     return interaction.editReply({
       content: `✅ **${ids.length}** venda(s) liberada(s) manualmente nas últimas **${horas}h** foram removidas do histórico.`,

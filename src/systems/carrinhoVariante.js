@@ -91,7 +91,11 @@ function removerItem(userId, varianteId) {
 function calcularTotal(userId) {
   const c = getCarrinho(userId);
   if (!c) return 0;
-  return c.itens.reduce((acc, i) => acc + i.preco * i.qtd, 0);
+  return c.itens.reduce((acc, i) => {
+    const preco = Number(i.preco) || 0;
+    const qtd = Number(i.qtd) || 0;
+    return acc + (preco * qtd);
+  }, 0);
 }
 
 // ─── Montar embed do carrinho ─────────────────────────────────────────────────
