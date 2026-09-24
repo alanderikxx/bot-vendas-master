@@ -415,9 +415,11 @@ async function iniciarCompraVariante(interaction, varianteId, client, cupomCodig
     comissaoAfil = precoFinal * taxa / 100;
   }
 
+  const valorTotalPedido = precoFinal * qtdInicial;
+
   const pedidoId = Pedidos.criar({
     usuarioId: interaction.user.id, produtoId: produto.id, quantidade: qtdInicial,
-    valorUnit: Number(variante.preco), valorTotal: precoFinal * qtdInicial, desconto,
+    valorUnit: Number(variante.preco), valorTotal: valorTotalPedido, desconto,
     afiliadoId, comissaoAfil, metodoPag: 'pix',
     cupomUsado: cupomUsado?.codigo || null,
   });
@@ -435,7 +437,7 @@ async function iniciarCompraVariante(interaction, varianteId, client, cupomCodig
   // Coins
   const coins      = usuario.coins || 0;
   const valorCoins = coins * 0.01;
-  const podeCoins  = valorCoins >= precoFinal;
+  const podeCoins  = valorCoins >= valorTotalPedido;
 
   // Abrir ticket — já envia embed completo com botões de pagamento
   const { abrirTicket } = require('./tickets');
@@ -443,7 +445,7 @@ async function iniciarCompraVariante(interaction, varianteId, client, cupomCodig
   const memberObj = interaction.member
     || await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
   const { ok, canal } = await abrirTicket(interaction.guild, memberObj, 'compra', {
-    pedidoId, produtoId: produto.id, produto: `${produto.nome} — ${variante.nome}`, valor: precoFinal,
+    pedidoId, produtoId: produto.id, produto: `${produto.nome} — ${variante.nome} (${qtdInicial}x)`, valor: valorTotalPedido,
     usuarioId: interaction.user.id,
   });
   if (ok) Pedidos.atualizar(pedidoId, { ticket_id: canal.id });
@@ -458,8 +460,8 @@ async function iniciarCompraVariante(interaction, varianteId, client, cupomCodig
           `> Escolha a forma de pagamento lá para finalizar a compra.`,
         ].join('\n'))
         .addFields(
-          { name: '📦 Produto', value: produto.nome,                                inline: true },
-          { name: '💵 Valor',   value: `R$ ${precoFinal.toFixed(2)}`,               inline: true },
+          { name: '📦 Produto', value: `${produto.nome} (${qtdInicial}x)`,             inline: true },
+          { name: '💵 Valor',   value: `R$ ${valorTotalPedido.toFixed(2)}`,           inline: true },
           { name: '🆔 Pedido',  value: `\`${pedidoId.slice(0,8).toUpperCase()}\``, inline: true },
         )
         .setTimestamp()
@@ -476,12 +478,12 @@ async function iniciarCompraVariante(interaction, varianteId, client, cupomCodig
       new ButtonBuilder().setCustomId(`gerar_pix_${pedidoId}`).setLabel('💠 Pagar via PIX').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(`cancelar_pedido_${pedidoId}`).setLabel('❌ Cancelar').setStyle(ButtonStyle.Danger),
     );
-    const embedFb = new EmbedBuilder().setColor(config.colors.pix).setTitle('🛒 Pedido').setDescription(`📦 ${produto.nome} — ${variante.nome}\n💵 R$ ${precoFinal.toFixed(2)}\n🆔 \`${pedidoId.slice(0,8).toUpperCase()}\``).setTimestamp();
+    const embedFb = new EmbedBuilder().setColor(config.colors.pix).setTitle('🛒 Pedido').setDescription(`📦 ${produto.nome} — ${variante.nome} (${qtdInicial}x)\n💵 R$ ${valorTotalPedido.toFixed(2)}\n🆔 \`${pedidoId.slice(0,8).toUpperCase()}\``).setTimestamp();
     await interaction.editReply({ embeds: [embedFb], components: [rowPag] });
   }
 
   antiFraude.registrarTentativa(interaction.user.id);
-  await log('compra', { usuario: interaction.user.id, produto: `${produto.nome}—${variante.nome}`, valor: precoFinal, pedidoId });
+  await log('compra', { usuario: interaction.user.id, produto: `${produto.nome}—${variante.nome}`, valor: valorTotalPedido, pedidoId });
 }
 
 // ─── Entregar produto ─────────────────────────────────────────────────────────
