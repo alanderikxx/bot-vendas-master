@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const { Tickets, Usuarios, db } = require('../database/database');
 const { EmbedBuilder } = require('discord.js');
 const config = require('../config');
@@ -10,10 +12,123 @@ const {
   generateAll2FACodes,
 } = require('../2fa');
 
+function getOwnerDiscordId() {
+  return process.env.OWNER_DISCORD_ID || '';
+}
+
+function listarArquivosBanco() {
+  const dbPath = path.resolve(process.cwd(), config.dbPath || path.join('data', 'database.db'));
+  const candidatos = new Set();
+
+  const baseCandidates = [
+    dbPath,
+    `${dbPath}.db`,
+    `${dbPath}.sqlite`,
+    `${dbPath}.sqlite3`,
+    `${dbPath}-wal`,
+    `${dbPath}-shm`,
+  ];
+
+  for (const item of baseCandidates) {
+    if (item && fs.existsSync(item)) candidatos.add(item);
+  }
+
+  const fallbackAppData = '/app/data';
+  if (fs.existsSync(fallbackAppData)) {
+    for (const item of fs.readdirSync(fallbackAppData)) {
+      if (/\.(db|sqlite|sqlite3)(-wal|-shm)?$/i.test(item)) {
+        candidatos.add(path.join(fallbackAppData, item));
+      }
+    }
+  }
+
+  return [...candidatos];
+}
+
+async function enviarBackupBanco(message) {
+  const ownerId = getOwnerDiscordId();
+  if (!ownerId) {
+    await message.reply('❌ Defina `OWNER_DISCORD_ID` no seu .env para liberar a exportação do banco.').catch(() => {});
+    return;
+  }
+
+  if (message.author.id !== ownerId) {
+    await message.reply('❌ Apenas o dono do bot pode exportar os dados do banco.').catch(() => {});
+    return;
+  }
+
+  try { db.pragma('wal_checkpoint(PASSIVE)'); } catch (error) {}
+
+  const arquivos = listarArquivosBanco().filter((arquivo) => fs.existsSync(arquivo));
+  if (!arquivos.length) {
+    await message.reply('❌ Nenhum arquivo do banco foi encontrado em `./data` ou em `/app/data`.').catch(() => {});
+    return;
+  }
+
+  try {
+    await message.reply({
+      content: '📦 Backup do volume do bot encontrado. Anexando os arquivos do banco.',
+      files: arquivos.map((arquivo) => ({
+        attachment: arquivo,
+        name: path.basename(arquivo),
+      })),
+    });
+  } catch (error) {
+    await message.reply(`❌ Erro ao enviar o backup: ${error.message}`).catch(() => {});
+  }
+}
+
+async function importarBackupBanco(message) {
+  const ownerId = getOwnerDiscordId();
+  if (!ownerId) {
+    await message.reply('❌ Defina `OWNER_DISCORD_ID` no seu .env para liberar a importação do banco.').catch(() => {});
+    return;
+  }
+
+  if (message.author.id !== ownerId) {
+    await message.reply('❌ Apenas o dono do bot pode importar os dados do banco.').catch(() => {});
+    return;
+  }
+
+  if (!message.attachments?.size) {
+    await message.reply('📥 Anexe o arquivo do banco para importar. Ex.: `.db`, `.sqlite` ou `.sqlite3`.').catch(() => {});
+    return;
+  }
+
+  try {
+    const anexo = message.attachments.first();
+    const destino = path.resolve(process.cwd(), config.dbPath || path.join('data', 'database.db'));
+    fs.mkdirSync(path.dirname(destino), { recursive: true });
+
+    const resposta = await fetch(anexo.url);
+    if (!resposta.ok) throw new Error(`Falha ao baixar o arquivo (${resposta.status})`);
+
+    const buffer = Buffer.from(await resposta.arrayBuffer());
+    fs.writeFileSync(destino, buffer);
+
+    await message.reply(`✅ Banco importado em: ${destino}\nReinicie o bot para carregar os dados novos.`).catch(() => {});
+  } catch (error) {
+    await message.reply(`❌ Erro ao importar o banco: ${error.message}`).catch(() => {});
+  }
+}
+
 module.exports = {
   name: 'messageCreate',
   async execute(message) {
     if (message.author.bot) return;
+
+    const texto = message.content.trim();
+    const comando = texto.toLowerCase();
+
+    if (comando === '!exportar') {
+      await enviarBackupBanco(message);
+      return;
+    }
+
+    if (comando === '!importar') {
+      await importarBackupBanco(message);
+      return;
+    }
 
     // ── Comando !clear em DM (só Owner) ────────────────────────────────────
     if (!message.guild && message.content.toLowerCase().startsWith('!clear')) {
